@@ -1,0 +1,4 @@
+optimisation,exact_0_count,exact_0_pct,"near_0_count_(0,1%]","near_0_pct_(0,1%]",combined_<=1%_count,combined_<=1%_pct
+better_return,18,0.0001,247737,0.7658,247755,0.7658
+safer_risk,70,0.0002,157160,0.4858,157230,0.486
+max_sharpe,6,0.0,51970,0.1606,51976,0.1607

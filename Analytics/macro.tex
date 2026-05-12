@@ -1,0 +1,503 @@
+% --- Token metadata (Coingecko universe) ---
+\def\CoingeckoInitTokensN/{\num{5394}}
+\def\CoingeckoERCTokensN/{\num{5359}}
+\def\CoingeckoCleanedTokensN/{\num{4562}}
+\def\CoingeckoRemovedTokensN/{\num{830}}
+
+% --- Total accounts at end-of-study (millions) ---
+\def\TotalAccountsRaw/{116182156}
+\def\TotalAccountsRounded/{\the\numexpr\TotalAccountsRaw//1000000\relax\,M}
+
+% --- Account counts: EOA vs CA growth (CAGR + ratios) ---
+\def\EOAAccountsEnd/{\num{109007240}}
+\def\CAAccountsEnd/{\num{7174916}}
+
+\def\EOACAGR/{\SI{50.53}{\percent}}
+\def\EOAAvgIncreaseYear/{\num{16785778}}
+
+\def\CACAGR/{\SI{56.93}{\percent}}
+\def\CAAvgIncreaseYear/{\num{1128397}}
+
+\def\TotalAccountsEnd/{\num{\TotalAccountsRaw/}}
+\def\CAShareEndPct/{\SI{6.18}{\percent}}
+
+% --- Token holder counts: distribution per year (2020 vs 2025) ---
+\def\HoldersAvgYtwenty{\num{27088}}
+\def\HoldersMedYtwenty{\num{3312}}
+
+\def\HoldersAvgYtwentyfive{\num{12429}}
+\def\HoldersMedYtwentyfive{\num{1746}}
+
+\def\HoldersPctGtTenKYtwenty{\num{28.3}\%}
+\def\HoldersPctGtTenKYtwentyfive{\num{15.6}\%}
+
+\def\HoldersPctOneKTenKYtwenty{\num{39.7}\%}
+\def\HoldersPctOneKTenKYtwentyfour{\num{50.4}\%}
+\def\HoldersPctOneKTenKYtwentyfive{\num{47.8}\%}
+
+\def\HoldersPctHundredOneKYtwenty{\num{17.7}\%}
+\def\HoldersPctHundredOneKYtwentyfive{\num{27.5}\%}
+
+% --- Wealth buckets: average $-bucket allocation by wallet type ---
+% --- CA ---
+\def\WealthBucketCAZeroOneP/{\num{51.63}}
+\def\WealthBucketCAOneHundredP/{\num{28.86}}
+\def\WealthBucketCAHundredOneKP/{\num{10.75}}
+\def\WealthBucketCAOneKTenKP/{\num{5.08}}
+\def\WealthBucketCATenKHundredKP/{\num{2.00}}
+\def\WealthBucketCAOverHundredKP/{\num{1.67}}
+
+% --- EOA ---
+\def\WealthBucketEOAZeroOneP/{\num{29.80}}
+\def\WealthBucketEOAOneHundredP/{\num{49.43}}
+\def\WealthBucketEOAHundredOneKP/{\num{13.89}}
+\def\WealthBucketEOAOneKTenKP/{\num{5.02}}
+\def\WealthBucketEOATenKHundredKP/{\num{1.44}}
+\def\WealthBucketEOAOverHundredKP/{\num{0.42}}
+
+% --- Wealth share: CA vs EOA fraction of total value over time ---
+% --- CA share stats ---
+\def\WealthShareCAMeanP/{\num{31.80}}
+
+% --- EOA share stats ---
+\def\WealthShareEOAMeanP/{\num{68.20}}
+
+% --- L1 distance: observed vs MPT-optimal portfolios ---
+\def\LOneObservationsRaw/{239634756}
+\def\LOneObservationsN/{\num{\LOneObservationsRaw/}}
+\def\LOneObservationsM/{\the\numexpr\LOneObservationsRaw//1000000\relax\,M}
+
+% Time-averaged means and medians per strategy (72 monthly snapshots)
+\def\LOneMeanSaferRisk/{12.59}
+\def\LOneMeanBetterReturn/{28.30}
+\def\LOneMeanMaxSharpe/{45.09}
+\def\LOneMedianBetterReturn/{14.52}
+\def\LOneMedianMaxSharpe/{48.79}
+\def\LOneMonthsN/{72}
+
+% Distribution buckets per strategy (share with L1 <= 1)
+\def\LOneSrCombinedLeOnePct/{63.35}
+\def\LOneBrCombinedLeOnePct/{40.09}
+\def\LOneMsCombinedLeOnePct/{17.87}
+\def\LOneMsHighBinPct/{19.49}
+\def\LOneMs60to80Pct/{24.66}
+
+% Cross-strategy Pearson correlations (full data)
+\def\LOneCorrBrSr/{0.452}
+\def\LOneCorrBrMs/{0.360}
+\def\LOneCorrSrMs/{0.385}
+
+% Joint optimality across strategies
+\def\LOneJointAllThreeN/{\num{3099}}
+\def\LOneJointAllThreePct/{0.001}
+\def\LOneJointBrSrPct/{0.26}
+\def\LOneJointBrMsPct/{0.05}
+\def\LOneJointSrMsPct/{0.03}
+
+% Near-optimal (L1 <= 1%)
+\def\LOneNearOptTwoTokenPctLo/{92}
+\def\LOneNearOptTwoTokenPctHi/{95}
+\def\LOneNearOptMedianValueLo/{27}
+\def\LOneNearOptMedianValueHi/{33}
+\def\LOneNearOptBrN/{96.1}
+\def\LOneNearOptBrPct/{40.1}
+\def\LOneNearOptSrN/{151.8}
+\def\LOneNearOptSrPct/{63.4}
+\def\LOneNearOptMsN/{42.8}
+\def\LOneNearOptMsPct/{17.9}
+
+% OLS R-squared (base + extended)
+\def\LOneOlsBrRsq/{0.064}
+\def\LOneOlsSrRsq/{0.358}
+\def\LOneOlsMsRsq/{0.080}
+\def\LOneOlsExtBrRsq/{0.104}
+\def\LOneOlsExtSrRsq/{0.632}
+\def\LOneOlsExtMsRsq/{0.132}
+
+% Random Forest fit (R^2 + MAE) and feature importances
+\def\LOneRfBrRsq/{0.376}
+\def\LOneRfBrMae/{19.55}
+\def\LOneRfSrRsq/{0.676}
+\def\LOneRfSrMae/{5.35}
+\def\LOneRfMsRsq/{0.412}
+\def\LOneRfMsMae/{19.35}
+\def\LOneRfSrTokensImp/{95.5}
+\def\LOneRfBrMsValueImp/{45}
+\def\LOneRfBrMsTokensImpLo/{27}
+\def\LOneRfBrMsTokensImpHi/{31}
+\def\LOneRfBrMsMonthImpLo/{25}
+\def\LOneRfBrMsMonthImpHi/{28}
+
+% Spearman/Pearson correlations on 50M-row sample
+\def\LOneSpearmanSrTokens/{0.811}
+\def\LOnePearsonSrTokens/{0.576}
+\def\LOneSpearmanBrTokens/{0.451}
+\def\LOneSpearmanMsTokens/{0.399}
+
+% --- 5+ token robustness check ---
+\def\LOneFivePlusBrLeOnePct/{0.77}
+\def\LOneFivePlusSrLeOnePct/{0.49}
+\def\LOneFivePlusMsLeOnePct/{0.16}
+\def\LOneFivePlusMsHighBinPct/{50.6}
+\def\LOneFivePlusRfSrRsq/{0.173}
+\def\LOneFivePlusMsMonthImp/{42.7}
+\def\LOneFivePlusSpearmanSrTokens/{0.365}
+\def\LOneFivePlusCorrBrMs/{0.596}
+
+% --- Wealth composition: peak total-value snapshots ---
+\def\WealthPeakTwentyone/{\$1\,T}
+\def\WealthPeakTwentyfiveB/{\$1.47\,T}
+
+% --- Top wallet wealth concentration ---
+\def\TopOneWealthTwenty/{97.25}
+\def\TopOneWealthTwentyfive/{99.03}
+\def\TopFiveTenWealthMin/{99.3}
+
+% --- Portfolio size distribution (avg across 72 monthly snapshots) ---
+\def\PortSizeOneTokenPct/{83.35}
+\def\PortSizeTwoTokenPct/{10.14}
+\def\PortSizeThreeFourTokenPct/{4.26}
+\def\PortSizeFivePlusPct/{2.17}
+\def\PortSizeTwoOfMultiPct/{61.4}
+
+% --- L1 distance: baseline portfolio vs naive (equal/mcap) benchmarks ---
+% L1 distance: baseline vs naive (overall)
+\def\LOneNaiveEqualMean/{37.7}
+\def\LOneNaiveEqualMedian/{40.0}
+\def\LOneNaiveMcapMean/{38.4}
+\def\LOneNaiveMcapMedian/{31.2}
+
+% MPT vs Naive direction: Equal-weight
+\def\LOneDeltaBrEqualMean/{-0.042}
+\def\LOneDeltaBrEqualCloserPct/{32.9}
+\def\LOneDeltaBrEqualFartherPct/{20.1}
+\def\LOneDeltaBrEqualUnchangedPct/{46.9}
+\def\LOneDeltaSrEqualMean/{-0.074}
+\def\LOneDeltaSrEqualCloserPct/{27.4}
+\def\LOneDeltaSrEqualFartherPct/{9.1}
+\def\LOneDeltaSrEqualUnchangedPct/{63.5}
+\def\LOneDeltaMsEqualMean/{+0.173}
+\def\LOneDeltaMsEqualCloserPct/{10.2}
+\def\LOneDeltaMsEqualFartherPct/{50.8}
+\def\LOneDeltaMsEqualUnchangedPct/{39.1}
+
+% MPT vs Naive direction: MCap-weight
+\def\LOneDeltaBrMcapMean/{+0.130}
+\def\LOneDeltaBrMcapCloserPct/{22.7}
+\def\LOneDeltaBrMcapFartherPct/{37.1}
+\def\LOneDeltaBrMcapUnchangedPct/{39.9}
+\def\LOneDeltaSrMcapMean/{-0.008}
+\def\LOneDeltaSrMcapCloserPct/{18.8}
+\def\LOneDeltaSrMcapFartherPct/{17.9}
+\def\LOneDeltaSrMcapUnchangedPct/{63.0}
+\def\LOneDeltaMsMcapMean/{+0.205}
+\def\LOneDeltaMsMcapCloserPct/{29.8}
+\def\LOneDeltaMsMcapFartherPct/{52.0}
+\def\LOneDeltaMsMcapUnchangedPct/{17.9}
+
+% Safer Risk closer-to-farther ratio vs equal
+\def\LOneDeltaSrEqualRatio/{3}
+
+% --- CAPM: alpha/beta of strategies vs market benchmark ---
+% Beta summary (baseline median + IQR)
+\def\CAPMBetaBaselineMedian/{0.989}
+\def\CAPMBetaBaselinePtwentyfive/{0.58}
+\def\CAPMBetaBaselinePseventyfive/{1.28}
+
+% Alpha medians per strategy
+\def\CAPMAlphaBaselineMedian/{-1.91}
+\def\CAPMAlphaMcapMedian/{-0.30}
+\def\CAPMAlphaEqualMedian/{-2.78}
+\def\CAPMAlphaBetterMedian/{-2.31}
+\def\CAPMAlphaSaferMedian/{-1.85}
+\def\CAPMAlphaMaxSharpeMedian/{-1.92}
+
+% Share of blocks with positive alpha (per strategy)
+\def\CAPMFracPositiveBaseline/{38.9}
+\def\CAPMFracPositiveMcap/{39.7}
+\def\CAPMFracPositiveEqual/{37.9}
+\def\CAPMFracPositiveBetter/{37.8}
+\def\CAPMFracPositiveSafer/{38.5}
+\def\CAPMFracPositiveMaxSharpe/{38.0}
+
+% Median realized returns per strategy + market benchmark
+\def\CAPMRetBaselineMedian/{-1.87}
+\def\CAPMRetBetterMedian/{-2.33}
+\def\CAPMRetSaferMedian/{-2.00}
+\def\CAPMRetMaxSharpeMedian/{-1.92}
+\def\CAPMRetEqualMedian/{-2.82}
+\def\CAPMRetMcapMedian/{-0.24}
+\def\CAPMRetMarketMedian/{1.89}
+
+% Return hit rates vs baseline (share of blocks beating baseline)
+\def\CAPMRetHitBetter/{48.5}
+\def\CAPMRetHitSafer/{51.0}
+\def\CAPMRetHitMaxSharpe/{49.8}
+\def\CAPMRetHitEqual/{50.4}
+\def\CAPMRetHitMcap/{53.3}
+
+% Spearman: L1 gap and beta vs alpha (signed)
+\def\CAPMSpearmanSrAlpha/{+0.026}
+\def\CAPMSpearmanMsAlpha/{+0.101}
+\def\CAPMSpearmanBetaAlpha/{-0.143}
+
+% Beta delta: mcap-weight vs baseline (mean)
+\def\CAPMDeltaBetaMcapMean/{-0.102}
+
+% Dataset size: observations, blocks, horizon
+\def\CAPMObsRaw/{235868007}
+\def\CAPMBlocksN/{72}
+\def\CAPMHorizonDays/{20}
+
+% --- Per-block aggregates: pct beating market / pct positive alpha ---
+\def\PctBeatRetBaselineBlockMedian/{42.98}
+\def\PctBeatRetBaselineBlockMean/{41.55}
+\def\PctPosAlphaBaselineBlockMedian/{40.23}
+\def\PctPosAlphaBaselineBlockMean/{41.69}
+\def\PctBeatRetBetterBlockMedian/{36.94}
+\def\PctBeatRetBetterBlockMean/{40.75}
+\def\PctPosAlphaBetterBlockMedian/{36.07}
+\def\PctPosAlphaBetterBlockMean/{40.10}
+\def\PctBeatRetSaferBlockMedian/{40.80}
+\def\PctBeatRetSaferBlockMean/{42.21}
+\def\PctPosAlphaSaferBlockMedian/{38.23}
+\def\PctPosAlphaSaferBlockMean/{41.65}
+\def\PctBeatRetMaxSharpeBlockMedian/{38.61}
+\def\PctBeatRetMaxSharpeBlockMean/{41.36}
+\def\PctPosAlphaMaxSharpeBlockMedian/{36.69}
+\def\PctPosAlphaMaxSharpeBlockMean/{40.61}
+\def\PctBeatRetEqualBlockMedian/{36.05}
+\def\PctBeatRetEqualBlockMean/{41.79}
+\def\PctPosAlphaEqualBlockMedian/{37.20}
+\def\PctPosAlphaEqualBlockMean/{41.24}
+\def\PctBeatRetMcapBlockMedian/{42.78}
+\def\PctBeatRetMcapBlockMean/{43.91}
+\def\PctPosAlphaMcapBlockMedian/{39.58}
+\def\PctPosAlphaMcapBlockMean/{42.74}
+
+\def\PctBeatRetBaselineBlockMin/{6.69}
+\def\PctBeatRetBaselineBlockMax/{95.92}
+
+\def\PctBeatRetMedianStrategySpread/{6.7}
+\def\PctPosAlphaMedianStrategySpread/{4.2}
+
+\def\PctBeatCrossStratCorrLo/{0.918}
+
+\def\PctBlocksBelowFifty/{69.4}
+
+% --- Beat-market margin: cross-sectional quantiles per strategy ---
+\def\BeatExcRetBaselineBotOne/{$-$39.87}
+\def\BeatExcRetBaselineMed/{$-$2.71}
+\def\BeatExcRetBaselineTopOne/{67.31}
+\def\BeatExcRetBaselineSkew/{27.44}
+\def\BeatExcRetBetterBotOne/{$-$38.12}
+\def\BeatExcRetBetterMed/{$-$4.09}
+\def\BeatExcRetBetterTopOne/{71.28}
+\def\BeatExcRetBetterSkew/{33.15}
+\def\BeatExcRetSaferBotOne/{$-$36.64}
+\def\BeatExcRetSaferMed/{$-$3.18}
+\def\BeatExcRetSaferTopOne/{66.15}
+\def\BeatExcRetSaferSkew/{29.52}
+\def\BeatExcRetMaxSharpeBotOne/{$-$42.39}
+\def\BeatExcRetMaxSharpeMed/{$-$3.19}
+\def\BeatExcRetMaxSharpeTopOne/{76.60}
+\def\BeatExcRetMaxSharpeSkew/{34.20}
+\def\BeatExcRetEqualBotOne/{$-$31.41}
+\def\BeatExcRetEqualMed/{$-$3.12}
+\def\BeatExcRetEqualTopOne/{65.65}
+\def\BeatExcRetEqualSkew/{34.25}
+\def\BeatExcRetMcapBotOne/{$-$34.00}
+\def\BeatExcRetMcapMed/{$-$2.32}
+\def\BeatExcRetMcapTopOne/{55.04}
+\def\BeatExcRetMcapSkew/{21.04}
+\def\BeatAlphaBaselineBotOne/{$-$40.84}
+\def\BeatAlphaBaselineMed/{$-$2.28}
+\def\BeatAlphaBaselineTopOne/{72.35}
+\def\BeatAlphaBaselineSkew/{31.50}
+\def\BeatAlphaBetterBotOne/{$-$40.13}
+\def\BeatAlphaBetterMed/{$-$2.86}
+\def\BeatAlphaBetterTopOne/{75.31}
+\def\BeatAlphaBetterSkew/{35.17}
+\def\BeatAlphaSaferBotOne/{$-$37.23}
+\def\BeatAlphaSaferMed/{$-$1.84}
+\def\BeatAlphaSaferTopOne/{66.89}
+\def\BeatAlphaSaferSkew/{29.66}
+\def\BeatAlphaMaxSharpeBotOne/{$-$45.14}
+\def\BeatAlphaMaxSharpeMed/{$-$2.20}
+\def\BeatAlphaMaxSharpeTopOne/{80.76}
+\def\BeatAlphaMaxSharpeSkew/{35.62}
+\def\BeatAlphaEqualBotOne/{$-$31.46}
+\def\BeatAlphaEqualMed/{$-$2.60}
+\def\BeatAlphaEqualTopOne/{68.25}
+\def\BeatAlphaEqualSkew/{36.80}
+\def\BeatAlphaMcapBotOne/{$-$35.06}
+\def\BeatAlphaMcapMed/{$-$0.63}
+\def\BeatAlphaMcapTopOne/{55.99}
+\def\BeatAlphaMcapSkew/{20.94}
+\def\BeatExcRetBaselineBotOneAbs/{39.87}
+
+% --- Return analysis: realized 20-day returns ---
+% Distance bucket median returns (safer_risk, baseline cohort)
+\def\RetDistZeroMedianBaseline/{-0.05}
+\def\RetDistHighMedianBaseline/{-6.09}
+
+% Return distribution: share of negative-return blocks
+\def\RetNegativePctLo/{57}
+\def\RetNegativePctHi/{59}
+
+% --- L1 fitting: power-decay parametric fits per strategy ---
+\def\FitPsiMRV/{1.1319}
+\def\FitGammaMRV/{0.4803}
+\def\FitDinfMRV/{100.00}
+\def\FitRsqMRV/{0.9937}
+\def\FitMaeMRV/{1.12}
+\def\FitPsiMVR/{1.7139}
+\def\FitGammaMVR/{0.7774}
+\def\FitDinfMVR/{80.69}
+\def\FitRsqMVR/{0.9999}
+\def\FitMaeMVR/{1.56}
+\def\FitPsiMSR/{1.1211}
+\def\FitGammaMSR/{0.9022}
+\def\FitDinfMSR/{88.62}
+\def\FitRsqMSR/{0.9999}
+\def\FitMaeMSR/{1.34}
+
+% --- Top-1% CA/EOA wealth concentration breakdown ---
+% Top 1%
+\def\TopOneCAPctWallets/{6.98}
+\def\TopOneEOAPctWallets/{93.02}
+\def\TopOneCAPctValue/{32.26}
+\def\TopOneEOAPctValue/{67.74}
+
+% Top 0.1%
+\def\TopPointOneCAPctWallets/{18.95}
+\def\TopPointOneCAPctValue/{33.70}
+
+% --- GraphSense tag coverage of top-0.1% addresses ---
+\def\TagCoveragePctMean/{23.25}
+\def\TagCoveragePctMin/{10.70}
+\def\TagCoveragePctMax/{35.14}
+\def\TagUnlabeledPct/{76.20}
+
+\def\TagCatUserPct/{33.83}
+\def\TagCatDexPairPct/{19.32}
+\def\TagCatServicePct/{15.66}
+\def\TagCatExchangePct/{7.97}
+\def\TagCatDefiTokenPct/{7.40}
+
+\def\TagConDefiPct/{63.07}
+\def\TagConCustodyPct/{31.73}
+\def\TagConExchangePct/{17.09}
+\def\TagConDexPct/{13.88}
+
+% --- Random Forest + SHAP (extended feature set) ---
+\def\RfExtRetRsqLo/{0.56}
+\def\RfExtRetRsqHi/{0.65}
+\def\RfExtRetMonthImpLo/{70}
+\def\RfExtRetMonthImpHi/{79}
+\def\RfExtRetBetaImpLo/{14}
+\def\RfExtRetBetaImpHi/{22}
+\def\RfExtRetValueImpLo/{5}
+\def\RfExtRetValueImpHi/{8}
+\def\RfExtAlphaMonthImpLo/{55}
+\def\RfExtAlphaMonthImpHi/{62}
+\def\RfExtAlphaBetaImpLo/{25}
+\def\RfExtAlphaBetaImpHi/{31}
+\def\RfDeltaRsqRetLo/{+0.07}
+\def\RfDeltaRsqRetHi/{+0.10}
+\def\RfDeltaRsqAlphaLo/{+0.08}
+\def\RfDeltaRsqAlphaHi/{+0.12}
+
+\def\ShapMonthPp/{11.4}
+\def\ShapBetaPp/{2.7}
+
+% --- Risk-free rate (used for MSR optimisation) ---
+\def\RfDefault/{5}
+
+% --- On-chain stablecoin yield evidence (DefiLlama, Ethereum-only) ---
+\def\StablecoinUSDCAvgAPY/{5.51}
+\def\StablecoinUSDCMedianAPY/{4.77}
+\def\StablecoinUSDCMonths/{44}
+\def\StablecoinUSDTAvgAPY/{4.47}
+\def\StablecoinUSDTMedianAPY/{3.48}
+\def\StablecoinUSDTMonths/{52}
+\def\StablecoinPooledAvgAPY/{4.94}
+\def\StablecoinPooledMedianAPY/{3.88}
+\def\StablecoinPooledMonths/{52}
+
+% --- Robustness check sample (rf=0 vs rf=5%) ---
+\def\RfRobustBlocks/{72}
+\def\RfRobustWalletsPerBlock/{5{,}000}
+\def\RfRobustTotalWallets/{360{,}000}
+
+% MSR weight L1 distance, rf=0 vs rf=5%, normalised 0--100
+\def\RfRobustWeightLOneMedianPct/{0}
+\def\RfRobustWeightLOneMeanPct/{4.5}
+\def\RfRobustWeightLOneTopFivePct/{37.1}
+
+% Differences in L1-style gap metrics (pp on 0--100 scale)
+\def\RfRobustGapDiffMedianPP/{0}
+\def\RfRobustGapDiffMeanPP/{-0.4}
+\def\RfRobustGapDiffTopFivePP/{13.2}
+\def\RfRobustVsEqualDiffMedianPP/{0}
+\def\RfRobustVsEqualDiffMeanPP/{-0.7}
+\def\RfRobustVsEqualDiffTopFivePP/{2.4}
+\def\RfRobustVsMcapDiffMedianPP/{0}
+\def\RfRobustVsMcapDiffMeanPP/{-2.6}
+\def\RfRobustVsMcapDiffTopFivePP/{18.5}
+
+% --- Portfolio Reconstruction pipeline: data sizes + cluster config ---
+\def\ReconTransferEvents/{1,977,546,094}
+\def\ReconTokensDiscovered/{4,847}
+\def\ReconParquetSizeGB/{42.4}
+\def\ReconTopTokenTransfers/{698}
+\def\ReconTopTokenSharePct/{35.3}
+\def\ReconMedianTokenTransfers/{25,030}
+\def\ReconTokensAfterFilter/{4,562}
+\def\ReconPipelineWorkers/{48}
+\def\ReconBatchSize/{20,000}
+\def\ReconOutputRowsFirst/{477.3}
+\def\ReconOutputRowsSecond/{982.2}
+\def\ReconOutputRows/{1,459.5}
+\def\ReconOutputSizeGB/{196.6}
+\def\ReconSnapshotBlocks/{72}
+
+% --- MPT pipeline: observations, blocks, wallets-per-block stats ---
+\def\MptObservations/{239,634,756}
+\def\MptObservationsM/{239.6}
+\def\MptBlocks/{72}
+\def\MptWorkers/{64}
+\def\MptCores/{128}
+\def\MptOutputSizeGB/{144}
+\def\MptStrategies/{6}
+\def\MptHorizonDays/{20}
+\def\MptMedianWalletsPerBlock/{3,348,198}
+\def\MptMinWalletsPerBlock/{879,029}
+\def\MptMaxWalletsPerBlock/{7,111,049}
+
+% --- Auto-generated: L1 distance by token-group threshold (N=5) ---
+\def\TotalBlocks/{72}
+
+% --- Per-group means (time-series averages) ---
+\def\LOneSmallMRVMean/{24.2}
+\def\LOneLargeMRVMean/{56.8}
+
+\def\LOneSmallMVRMean/{7.5}
+\def\LOneLargeMVRMean/{48.5}
+
+\def\LOneSmallMSRMean/{41.5}
+\def\LOneLargeMSRMean/{70.2}
+
+% --- Hypothesis test results (paired Wilcoxon, N=5 threshold) ---
+\def\LOneDeltaMRV/{32.6}
+\def\LOneCohenMRV/{4.93}
+\def\LOneDeltaMVR/{41.1}
+\def\LOneCohenMVR/{13.77}
+\def\LOneDeltaMSR/{28.7}
+\def\LOneCohenMSR/{5.48}
+
+% --- Quick reference ---
+% Blocks: 72
+% MRV: <5 = 24.2%,  >=5 = 56.8%,  Δ = 32.6 pp
+% MVR: <5 = 7.5%,  >=5 = 48.5%,  Δ = 41.1 pp
+% MSR: <5 = 41.5%,  >=5 = 70.2%,  Δ = 28.7 pp

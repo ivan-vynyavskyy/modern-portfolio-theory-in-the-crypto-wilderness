@@ -1,0 +1,10 @@
+,feature,target,pearson_r,spearman_r
+0,month,better_return,-0.019,-0.03
+1,month,safer_risk,0.0543,0.0297
+2,month,max_sharpe,0.0822,0.0881
+3,log_value_usd,better_return,0.0837,0.0932
+4,log_value_usd,safer_risk,0.2625,0.2382
+5,log_value_usd,max_sharpe,0.1409,0.1425
+6,num_tokens,better_return,0.3015,0.4508
+7,num_tokens,safer_risk,0.5755,0.811
+8,num_tokens,max_sharpe,0.2658,0.3988

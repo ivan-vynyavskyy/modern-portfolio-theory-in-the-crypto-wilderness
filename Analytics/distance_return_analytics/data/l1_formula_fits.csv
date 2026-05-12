@@ -1,0 +1,7 @@
+strategy,statistic,a,b,c,r2,mae
+better_return,mean,113.1884,0.4803,100.0,0.9937,1.12
+safer_risk,mean,138.2901,0.7774,80.686,0.9999,1.56
+max_sharpe,mean,99.3562,0.9022,88.6244,0.9999,1.34
+better_return,median,159.605,0.6729,100.0,0.9992,1.34
+safer_risk,median,143.3783,0.5145,100.0,0.9924,1.06
+max_sharpe,median,159.5562,1.4256,88.1633,0.9998,2.41

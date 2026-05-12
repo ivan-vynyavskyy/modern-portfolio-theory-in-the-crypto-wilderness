@@ -1,0 +1,10 @@
+col_a,col_b,spearman_rho,p_value
+l1_gap_safer_risk,alpha_baseline,0.026389030181726184,0.0
+l1_gap_better_return,alpha_baseline,0.06805738284231784,0.0
+l1_gap_max_sharpe,alpha_baseline,0.10117015068167566,0.0
+l1_baseline_vs_equal,alpha_baseline,-0.0037462768402388665,5.43136908413988e-17
+l1_baseline_vs_mcap,alpha_baseline,0.01739802860114089,0.0
+num_tokens,alpha_baseline,-0.02085039381991795,0.0
+beta_baseline,alpha_baseline,-0.14313587933004265,0.0
+l1_baseline_vs_equal,alpha_equal_weight,0.019569352083419724,0.0
+l1_baseline_vs_mcap,alpha_mcap_weight,0.028805358715943166,0.0

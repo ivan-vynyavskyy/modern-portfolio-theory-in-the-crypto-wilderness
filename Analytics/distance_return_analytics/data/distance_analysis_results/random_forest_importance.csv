@@ -1,0 +1,10 @@
+,feature,importance,target,R2_test,MAE_test
+1,log_value_usd,0.4491637218554048,better_return,0.376,19.55
+0,month,0.28131040346103026,better_return,0.376,19.55
+2,num_tokens,0.2695258746835649,better_return,0.376,19.55
+2,num_tokens,0.9547470178778857,safer_risk,0.676,5.35
+1,log_value_usd,0.028213185691232087,safer_risk,0.676,5.35
+0,month,0.01703979643088205,safer_risk,0.676,5.35
+1,log_value_usd,0.444558978511371,max_sharpe,0.4124,19.35
+2,num_tokens,0.3080371205662814,max_sharpe,0.4124,19.35
+0,month,0.24740390092234746,max_sharpe,0.4124,19.35

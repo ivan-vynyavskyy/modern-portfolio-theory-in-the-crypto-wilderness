@@ -17,50 +17,6 @@ The paper pursues three objectives:
 - **Obj C — Deviation effects.** Examine how such deviations affect
   portfolio performance relative to the market.
 
-## Key contributions
-
-1. **Portfolio reconstruction method.** A method for reconstructing actual
-   on-chain token portfolios from `Transfer` events, processing **4,562
-   tokens** across the full Ethereum history (2015–2025) and covering
-   **116,182,156 (116M) accounts** via an incremental ledger-based approach
-   validated against on-chain `balanceOf()` calls (paper Section 3).
-   Implementation and dataset will be made publicly available upon
-   publication.
-2. **Actual portfolio composition and diversification.** Aggregate on-chain
-   wealth peaks at **$1.47T** but is highly concentrated: the vast majority
-   of accounts hold less than $100, and **99.03%** of token wealth is
-   controlled by the top 1% of holders — predominantly centralized
-   cryptoasset exchanges and decentralized finance (DeFi) protocols.
-   **Single-asset portfolios account for 83.35% of all accounts, and only
-   2.17% hold five or more assets.** Multi-asset portfolios become more
-   prevalent as account wealth increases — a pattern inconsistent with
-   rational, risk-averse portfolio optimization (paper Section 4).
-3. **Deviation from the efficient frontier.** Measuring the ℓ₁ weight
-   distance between actual portfolios and three frontier strategies
-   (minimum variance, maximum return, maximum Sharpe ratio), portfolio size
-   and suboptimality follow a power-law decay: small portfolios (<5 assets)
-   lie close to the efficient frontier **by construction** — predominantly
-   two-token portfolios that *mechanically* approximate the constrained
-   solution rather than the result of deliberate optimization — while
-   larger portfolios deviate substantially, with distances reaching
-   **48.5%–70.2%** depending on the strategy (paper Section 5).
-4. **Deviation effects.** Realized returns of actual portfolios are
-   compared against MPT-optimal counterfactuals. **No MPT strategy
-   consistently outperforms observed allocations; only passive
-   market-capitalization weighting beats them more often than not.**
-   Proximity to the frontier does **not** predict better risk-adjusted
-   performance. Instead, **market entry timing** — which phase of the
-   boom-bust cycle an account is active in — explains **70–79% of the
-   variance in returns** (and 55–62% of the variance in risk-adjusted
-   returns), far exceeding the contribution of portfolio size or allocation
-   choice (paper Section 6).
-
-Together, these findings challenge the descriptive adequacy of MPT in the
-cryptoasset domain: observed allocations bear little resemblance to
-mean-variance optima, and pervasive under-diversification combined with the
-dominance of entry timing over allocation point to behavioral and
-market-structural drivers rather than mean-variance optimization.
-
 ## Repository layout
 
 ```
