@@ -1,6 +1,6 @@
-# Modern Portfolio Theory in the Wild
+# Modern Portfolio Theory in the Crypto-Wilderness
 
-This repository accompanies the paper **"Modern Portfolio Theory in the Wild"**.
+This repository accompanies the paper **"Modern Portfolio Theory in the Crypto-Wilderness"**.
 We reconstruct actual on-chain cryptoasset portfolios from raw Ethereum data and
 study them through the lens of mean-variance theory.
 
