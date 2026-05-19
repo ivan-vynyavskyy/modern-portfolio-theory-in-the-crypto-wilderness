@@ -134,7 +134,7 @@ p_stack_avg <- ggplot(df_hist_avg, aes(x = wealth_label, y = wallet_pct, fill = 
 
   labs(
     x = "Wealth category (USD)",
-    y = "Avg % of wallets",
+    y = "Avg % of accounts",
     fill = "Portfolio size\n(# assets)"
   ) +
   fintech_theme
