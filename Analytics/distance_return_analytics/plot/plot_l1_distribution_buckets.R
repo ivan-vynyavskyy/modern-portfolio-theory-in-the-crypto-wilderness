@@ -176,7 +176,7 @@ p_a <- ggplot(df_long, aes(x = bucket_label, y = pct, fill = strategy_label)) +
 
   labs(
     x = "L1 distance bucket (%)",
-    y = "Share of wallets"
+    y = "Share of accounts (%)",
   ) +
 
   fintech_theme
