@@ -4,6 +4,8 @@ This repository accompanies the paper **"Modern Portfolio Theory in the Crypto-W
 We reconstruct actual on-chain cryptoasset portfolios from raw Ethereum data and
 study them through the lens of mean-variance theory.
 
+> The full anonymized paper is included in this repository: [anonymized_submission_full.pdf](anonymized_submission_full.pdf).
+
 ## Research objectives
 
 The paper pursues three objectives:
