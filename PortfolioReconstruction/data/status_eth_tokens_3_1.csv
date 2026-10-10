@@ -5393,3 +5393,4 @@ zai,Zesh AI Layer,0x51129dad3db1c28d693616308ae1062e43280ed7,True,21465583.0,not
 zeth,ZeroLiquid ETH,0x776280f68ad33c4d49e6846507b7dbaf7811c89f,True,17986403.0,not_available,,,,price not yet available,unchecked,UNKNOWN,NO_DATA
 zeusd,ZeUSD,0x7dc9748da8e762e569f9269f48f69a1a9f8ea761,True,,not_available,,,,price not yet available,unchecked,UNKNOWN,NO_DATA
 zoo,ZooCoin,0x0c08638473cafbca3beb113616a1871f4bfad4f9,True,17763879.0,not_available,,,,price not yet available,unchecked,UNKNOWN,NO_DATA
+eth,Ethereum,0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee,True,0.0,success,2015-08-07,2025-12-16,3785.0,,good,TRUE,PASS

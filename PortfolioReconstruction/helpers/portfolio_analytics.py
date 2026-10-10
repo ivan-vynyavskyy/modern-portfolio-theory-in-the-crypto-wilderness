@@ -31,8 +31,7 @@ Notes
 
 from __future__ import annotations
 
-import pathlib
-from typing import Dict, List, Optional, Tuple, Any, Callable
+from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -50,8 +49,7 @@ class PortfolioAnalytics:
         compute_portfolio_metrics: Calculate portfolio risk and return metrics
         prepare_portfolio_data: Prepare and validate portfolio data for analysis
         trimmed_mean: Compute a trimmed mean for a return series
-        compute_mean_reversion_metrics: Compute AR(1) mean-reversion stats per token
-        adjust_expected_returns_for_mean_reversion: Adjust expected returns using mean reversion
+        shrink_expected_returns_to_cross_mean: Linear shrinkage of mu toward the cross-asset mean
         project_long_only_cap: Project weights to long-only with per-asset cap
         ensure_positive_definite: Ensure covariance matrix is positive definite
         estimate_covariance_matrix: Estimate covariance matrix with optional shrinkage
@@ -74,6 +72,17 @@ class PortfolioAnalytics:
             config: RiskConfig object containing portfolio analysis parameters
         """
         self.config = config
+        # Fallback flags, reset/set on every call of their solver; callers
+        # read them right after the call. 5_0 surfaces them as the
+        # wallet-level `better_return_fallback_used` / `safer_risk_fallback_used`
+        # columns so silent strategy substitutions are measurable per block.
+        # last_mrv_fallback: max_return_same_vol substituted max-Sharpe
+        # weights (2-asset target infeasible within bounds, or SLSQP failure).
+        self.last_mrv_fallback = False
+        # last_minvar_fallback: min_variance_target_return dropped the
+        # return constraint entirely and substituted the global min-variance
+        # portfolio (both the equality and the relaxed >= solve failed).
+        self.last_minvar_fallback = False
     
     def compute_portfolio_metrics(
         self,
@@ -254,98 +263,27 @@ class PortfolioAnalytics:
         s_sorted = s.sort_values()
         return float(s_sorted.iloc[k : n - k].mean())
 
-    def compute_mean_reversion_metrics(self, returns_df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Compute mean-reversion metrics per token using AR(1) stats.
-
-        Args:
-            returns_df: DataFrame of asset returns
-
-        Returns:
-            DataFrame indexed by token with mean-reversion metrics
-        """
-        stats: List[Dict[str, Any]] = []
-        for token in returns_df.columns:
-            series = returns_df[token].dropna()
-            if len(series) < 30:
-                continue
-
-            x = series.values
-            if len(x) < 2:
-                continue
-
-            x0 = x[:-1]
-            x1 = x[1:]
-
-            std0 = np.std(x0)
-            std1 = np.std(x1)
-            if std0 == 0.0 or std1 == 0.0:
-                ac1 = 0.0
-            else:
-                corr = np.corrcoef(x0, x1)
-                ac1 = float(corr[0, 1]) if np.isfinite(corr[0, 1]) else 0.0
-
-            var_x = np.var(x0)
-            if var_x == 0.0:
-                beta = np.nan
-            else:
-                cov_xy = np.cov(x0, x1, bias=True)[0, 1]
-                beta_val = cov_xy / var_x
-                beta = float(beta_val) if np.isfinite(beta_val) else np.nan
-
-            if isinstance(beta, float) and 0 < beta < 1:
-                halflife = -np.log(2.0) / np.log(beta)
-            else:
-                halflife = np.nan
-
-            stats.append(
-                {"token": token, "ac1": ac1, "beta_ar1": beta, "halflife_days": halflife}
-            )
-
-        if not stats:
-            return pd.DataFrame(columns=["ac1", "beta_ar1", "halflife_days"]).set_index(
-                pd.Index([], name="token")
-            )
-
-        return pd.DataFrame(stats).set_index("token")
-
-    def adjust_expected_returns_for_mean_reversion(
+    def shrink_expected_returns_to_cross_mean(
         self,
         mu: pd.Series,
-        mr_stats: pd.DataFrame,
-        strength: float,
+        lam: float,
     ) -> pd.Series:
+        """Linear shrinkage of expected returns toward the cross-asset mean
+        (Bayes-Stein / Jorion-style):
+
+            mu_i_shrunk = lam * mean(mu) + (1 - lam) * mu_i
+
+        lam=0 is an exact no-op; lam=1 collapses every asset to the average.
+        This is the estimator the paper describes (return regularisation and
+        the expected-return shrinkage of the appendix, lam=0.5); it replaced the per-asset AR(1) damping 2026-08-25
+        (the AR(1) helpers were removed).
+        NaN entries stay NaN; the mean is over the non-NaN assets.
         """
-        Adjust expected returns using mean-reversion strength.
-
-        Args:
-            mu: Expected returns series
-            mr_stats: Mean-reversion stats DataFrame
-            strength: Adjustment strength
-
-        Returns:
-            Adjusted expected returns series
-        """
-        mu = mu.copy()
-        if mr_stats is None or mr_stats.empty:
-            return mu
-        strength = float(strength)
-        if strength == 0.0:
-            return mu
-
-        common = mu.index.intersection(mr_stats.index)
-        if common.empty:
-            return mu
-
-        for token in common:
-            ac1 = mr_stats.loc[token, "ac1"]
-            if pd.isna(ac1):
-                continue
-            factor = 1.0 + strength * float(ac1)
-            factor = float(np.clip(factor, 0.0, 2.0))
-            mu[token] = mu[token] * factor
-
-        return mu
+        lam = float(lam)
+        if lam == 0.0 or mu.empty:
+            return mu.copy()
+        grand = float(mu.mean())
+        return lam * grand + (1.0 - lam) * mu
 
     def project_long_only_cap(self, w: np.ndarray, cap: float) -> np.ndarray:
         """
@@ -513,6 +451,8 @@ class PortfolioAnalytics:
 
         rf_d = float(self.config.risk_free_rate_annual) / float(self.config.annualization_factor)
 
+        cov_sym = cov + cov.T  # gradient of w@cov@w, exact even if cov is asymmetric
+
         def neg_sharpe(w: np.ndarray) -> float:
             w = np.asarray(w, dtype=float)
             ret = float(w @ mu) - rf_d
@@ -521,7 +461,21 @@ class PortfolioAnalytics:
                 return 1e6
             return -(ret / np.sqrt(var))
 
-        cons = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
+        def neg_sharpe_jac(w: np.ndarray) -> np.ndarray:
+            w = np.asarray(w, dtype=float)
+            ret = float(w @ mu) - rf_d
+            var = float(w @ cov @ w)
+            if var <= 0:
+                return np.zeros(n)
+            sigma = np.sqrt(var)
+            # d/dw [-(ret/sigma)] = -mu/sigma + ret * (cov_sym @ w) / (2 sigma^3)
+            return -mu / sigma + ret * (cov_sym @ w) / (2.0 * sigma ** 3)
+
+        # Analytic jacobians: without them SLSQP numerically differentiates
+        # the objective and every constraint each iteration (n+1 extra calls
+        # apiece), which dominated the whole backtest's runtime.
+        cons = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0,
+                 "jac": lambda w: np.ones(n)}]
         lb = 0.0 if long_only else -1.0
         ub = 1.0 if cap is None else float(cap)
         bounds = [(lb, ub) for _ in range(n)]
@@ -530,6 +484,7 @@ class PortfolioAnalytics:
         res = minimize(
             neg_sharpe,
             x0,
+            jac=neg_sharpe_jac,
             method="SLSQP",
             bounds=bounds,
             constraints=cons,
@@ -561,6 +516,7 @@ class PortfolioAnalytics:
         """
         Maximize expected return given a target variance constraint.
         """
+        self.last_mrv_fallback = False
         if long_only is None:
             long_only = self.config.long_only
         if cap is None:
@@ -570,12 +526,35 @@ class PortfolioAnalytics:
         mu = np.asarray(mu, dtype=float)
         n = mu.size
 
+        # Two assets: the constraint set {sum(w)=1, w'Σw=target} is at most
+        # two points, so the optimum has a closed form — exact, and ~1000x
+        # faster than SLSQP, which crawls (or hits maxiter and falls back)
+        # on this near-degenerate quadratic equality.
+        if n == 2 and long_only:
+            w2 = self._max_return_same_vol_2asset(cov, mu, float(target_var), cap)
+            if w2 is None:
+                # infeasible within bounds -> same fallback as a failed solve
+                self.last_mrv_fallback = True
+                return self._normalize_simplex(self.max_sharpe_weights(
+                    mu=mu, cov=cov, w0=None, long_only=long_only, cap=cap))
+            ub2 = cap if cap is not None else 1.0
+            return self._normalize_simplex(np.clip(w2, 0.0, float(ub2)))
+
+        cov_sym = cov + cov.T
+
         def neg_return(w: np.ndarray) -> float:
             return -float(w @ mu)
 
+        # Analytic jacobians (objective is linear, constraints have closed
+        # forms). The numerically-differentiated quadratic EQUALITY
+        # constraint used to make this solve ~100x slower than the other
+        # two combined — it was 98% of 5_0's per-wallet CPU.
         cons = [
-            {"type": "eq", "fun": lambda w: np.sum(w) - 1.0},
-            {"type": "eq", "fun": lambda w, cov=cov, target_var=target_var: float(w @ cov @ w) - target_var},
+            {"type": "eq", "fun": lambda w: np.sum(w) - 1.0,
+             "jac": lambda w: np.ones(n)},
+            {"type": "eq",
+             "fun": lambda w, cov=cov, target_var=target_var: float(w @ cov @ w) - target_var,
+             "jac": lambda w, cov_sym=cov_sym: cov_sym @ w},
         ]
 
         bounds = None
@@ -588,6 +567,7 @@ class PortfolioAnalytics:
         res = minimize(
             neg_return,
             x0,
+            jac=lambda w: -mu,
             method="SLSQP",
             bounds=bounds,
             constraints=cons,
@@ -595,6 +575,7 @@ class PortfolioAnalytics:
         )
 
         if not res.success:
+            self.last_mrv_fallback = True
             w_fallback = self.max_sharpe_weights(
                 mu=mu,
                 cov=cov,
@@ -609,6 +590,51 @@ class PortfolioAnalytics:
             ub = cap if cap is not None else 1.0
             w_opt = np.clip(w_opt, 0.0, ub)
         return self._normalize_simplex(w_opt)
+
+    def _max_return_same_vol_2asset(
+        self,
+        cov: np.ndarray,
+        mu: np.ndarray,
+        target_var: float,
+        cap: Optional[float],
+    ) -> Optional[np.ndarray]:
+        """Exact solution of max_return_same_vol for two long-only assets.
+
+        With w=(x, 1-x), the variance equality a·x² + b·x + c = target_var
+        has at most two roots; the answer is the in-bounds root with the
+        higher expected return. None when no root lies inside the cap
+        bounds (the caller then falls back exactly like a failed SLSQP).
+        """
+        ub = 1.0 if cap is None else float(cap)
+        lo, hi = max(0.0, 1.0 - ub), min(ub, 1.0)
+        if lo > hi:
+            return None
+
+        s11, s12, s22 = float(cov[0, 0]), float(cov[0, 1]), float(cov[1, 1])
+        a = s11 - 2.0 * s12 + s22   # variance of the (1,-1) spread, >= 0
+        b = 2.0 * (s12 - s22)
+        c = s22 - float(target_var)
+
+        roots: list[float] = []
+        if abs(a) < 1e-18:
+            if abs(b) > 1e-18:
+                roots = [-c / b]
+            elif abs(c) < 1e-14:
+                # variance is constant and equals the target: every x is
+                # feasible, so the linear objective picks a boundary
+                roots = [lo, hi]
+        else:
+            disc = b * b - 4.0 * a * c
+            if disc >= 0.0:
+                sq = float(np.sqrt(disc))
+                roots = [(-b - sq) / (2.0 * a), (-b + sq) / (2.0 * a)]
+
+        tol = 1e-9
+        cands = [min(max(x, lo), hi) for x in roots if lo - tol <= x <= hi + tol]
+        if not cands:
+            return None
+        best = max(cands, key=lambda x: x * float(mu[0]) + (1.0 - x) * float(mu[1]))
+        return np.array([best, 1.0 - best], dtype=float)
 
     def min_variance_weights(
         self,
@@ -628,10 +654,13 @@ class PortfolioAnalytics:
         cov = np.asarray(cov, dtype=float)
         n = cov.shape[0]
 
+        cov_sym = cov + cov.T
+
         def objective(w: np.ndarray) -> float:
             return 0.5 * float(w @ cov @ w)
 
-        cons = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0}]
+        cons = [{"type": "eq", "fun": lambda w: np.sum(w) - 1.0,
+                 "jac": lambda w: np.ones(n)}]
 
         lb = 0.0 if long_only else -1.0
         ub = 1.0 if cap is None else float(cap)
@@ -642,6 +671,7 @@ class PortfolioAnalytics:
         res = minimize(
             objective,
             x0,
+            jac=lambda w: 0.5 * (cov_sym @ w),
             method="SLSQP",
             bounds=bounds,
             constraints=cons,
@@ -672,6 +702,7 @@ class PortfolioAnalytics:
         """
         Minimize variance subject to achieving a target expected return.
         """
+        self.last_minvar_fallback = False
         if long_only is None:
             long_only = self.config.long_only
         if cap is None:
@@ -681,12 +712,19 @@ class PortfolioAnalytics:
         cov = np.asarray(cov, dtype=float)
         n = mu.size
 
+        cov_sym = cov + cov.T
+
         def objective(w: np.ndarray) -> float:
             return float(w @ cov @ w)
 
+        def objective_jac(w: np.ndarray) -> np.ndarray:
+            return cov_sym @ w
+
         cons = [
-            {"type": "eq", "fun": lambda w: np.sum(w) - 1.0},
-            {"type": "eq", "fun": lambda w: float(w @ mu) - target_return},
+            {"type": "eq", "fun": lambda w: np.sum(w) - 1.0,
+             "jac": lambda w: np.ones(n)},
+            {"type": "eq", "fun": lambda w: float(w @ mu) - target_return,
+             "jac": lambda w: mu},
         ]
 
         lb = 0.0 if long_only else -1.0
@@ -698,6 +736,7 @@ class PortfolioAnalytics:
         res = minimize(
             objective,
             x0,
+            jac=objective_jac,
             method="SLSQP",
             bounds=bounds,
             constraints=cons,
@@ -705,21 +744,26 @@ class PortfolioAnalytics:
         )
 
         if not res.success:
-            cons[1] = {"type": "ineq", "fun": lambda w: float(w @ mu) - target_return}
+            cons[1] = {"type": "ineq", "fun": lambda w: float(w @ mu) - target_return,
+                       "jac": lambda w: mu}
             res_relaxed = minimize(
                 objective,
                 x0,
+                jac=objective_jac,
                 method="SLSQP",
                 bounds=bounds,
                 constraints=cons,
             )
 
             if res_relaxed.success:
+                # NOT flagged as a fallback: the relaxed solve still honors
+                # "return >= target", so the strategy semantics survive.
                 w = np.array(res_relaxed.x, dtype=float)
                 if long_only and cap is not None:
                     w = np.clip(w, 0.0, float(cap))
                 return self._normalize_simplex(w)
 
+            self.last_minvar_fallback = True
             return self.min_variance_weights(cov, long_only=long_only, cap=cap)
 
         w_opt = np.array(res.x, dtype=float)

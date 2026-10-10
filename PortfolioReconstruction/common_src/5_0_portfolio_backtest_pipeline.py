@@ -12,8 +12,9 @@ What it does
 - Streams holdings by block from a parquet dataset and filters eligible wallets.
 - Optimizes three MVO strategies per wallet (max-Sharpe, min-variance, max-return-same-vol)
   and evaluates forward returns by horizon.
-- Computes CAPM beta/alpha, classifies market regime, and aggregates per-block and
-  overall summaries into CSV/parquet outputs.
+- Computes CAPM beta/alpha, classifies market regime, and aggregates per-block
+  summaries into CSV/parquet outputs. (Whole-dataset aggregates are computed by
+  the downstream Analytics scripts from the wallet-level parquet, not here.)
 
 Inputs
 ------
@@ -24,7 +25,7 @@ Inputs
 
 Outputs
 -------
-- summary CSV (per-block and overall summaries; columns as printed in summary tables)
+- summary CSV (per-block summaries; columns as printed in summary tables)
 - wallet-level parquet dataset (partitioned by block_number)
 
 CLI
@@ -46,12 +47,11 @@ from __future__ import annotations
 import argparse
 import bisect
 import dataclasses
-import datetime
 import json
 import sys
 import threading
 import time
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
 from functools import lru_cache
 from pathlib import Path
@@ -65,21 +65,51 @@ import pyarrow.parquet as pq
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-if str(ROOT_DIR) not in sys.path:
-    sys.path.append(str(ROOT_DIR))
+# Imports are bare (capm_analytics, portfolio_analytics, risk_config) so the
+# script runs from a flat ./src/ directory on the cluster; in the repo layout
+# those modules live in helpers/, so put that directory on the path as well.
+for _p in (ROOT_DIR, ROOT_DIR / "helpers"):
+    if _p.is_dir() and str(_p) not in sys.path:
+        sys.path.append(str(_p))
 
-from helpers.capm_analytics import (
+from capm_analytics import (
     build_market_return_series_from_arrays,
     compute_forward_market_return,
     compute_portfolio_beta,
     compute_token_betas,
 )
-from utils.log_utils import log, log_exc
-from helpers.portfolio_analytics import PortfolioAnalytics
-from helpers.risk_config import RiskConfig
+
+import sys
+from datetime import datetime
+
+
+def log(msg: str, *, end: str = "\n") -> None:
+    """Write a timestamped line to stdout."""
+    print(f"{datetime.now():%H:%M:%S} | {msg}", end=end, flush=True)
+
+
+def log_exc(msg: str) -> None:
+    """Write a timestamped error line to stderr."""
+    print(f"{datetime.now():%H:%M:%S} | ERROR: {msg}", file=sys.stderr, flush=True)
+
+from portfolio_analytics import PortfolioAnalytics
+from risk_config import RiskConfig
 
 
 # ----------------------------- Constants -----------------------------
+# For PORTFOLIO OPTIMIZATION, WETH is folded into the native-ETH pseudo-token
+# (decision 2026-08-25): they are 1:1
+# redeemable with the same price process, so treating them as two assets
+# created fictitious 2-asset portfolios (ETH+WETH-only pairs, ~2.4% of
+# eligible rows) and near-singular covariances. Balances add directly (both
+# 18 decimals); the merged position is priced with the ETH price series.
+# The MARKET BENCHMARK (WETH+WBTC price series, read from CSVs) is
+# deliberately NOT affected. Merging happens parent-side when holdings are
+# parsed (extract_holdings_map), so workers only ever see merged maps.
+ETH_PSEUDO_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+WETH_TOKEN = "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+MERGE_ETH_WETH = True  # --no-merge-eth-weth restores the two-asset view
+
 DEFAULT_HOLDINGS_PARQUET = "./data/portfolio_holdings.parquet"
 HORIZON_DAYS = 20
 DEFAULT_BATCH_SIZE = 50_000
@@ -91,27 +121,25 @@ DEFAULT_REGIME_LOOKBACK_DAYS = 60
 DEFAULT_REGIME_TOP_K_ASSETS = 30
 
 
-# --------------------------- JSON Holdings --------------------------
+# ------------------------------ Holdings ------------------------------
 
-def parse_holdings_json(raw: Any) -> List[Dict[str, Any]]:
-    """Parse a holdings JSON field into a list of token objects."""
-    if isinstance(raw, list):
-        return raw
-    try:
-        return json.loads(raw)
-    except Exception as exc:
-        raise ValueError(f"Invalid holdings JSON: {exc}")
+def parse_holdings(raw: Any) -> List[Dict[str, Any]]:
+    """Parse the nested holdings column of a 4_0 snapshot (list<struct>,
+    arrives as a list/tuple/ndarray of dicts) into a list of token objects."""
+    if isinstance(raw, (list, tuple, np.ndarray)):
+        return list(raw)
+    raise ValueError(f"Unexpected holdings value of type {type(raw).__name__}")
 
 
-def extract_holdings_map(holdings_json_field: Any) -> Dict[str, float]:
-    """Convert holdings JSON into a token->balance map."""
-    arr = parse_holdings_json(holdings_json_field)
-    if not isinstance(arr, list):
-        raise ValueError("Holdings JSON must be a list of token objects")
+def extract_holdings_map(holdings_field: Any) -> Dict[str, float]:
+    """Convert a holdings field into a token->balance map."""
+    arr = parse_holdings(holdings_field)
 
     out: Dict[str, float] = {}
     for item in arr:
         token = str(item.get("token_address", "")).lower().strip()
+        if MERGE_ETH_WETH and token == WETH_TOKEN:
+            token = ETH_PSEUDO_TOKEN
         bal = float(item.get("balance", 0.0) or 0.0)
         if token and bal > 0:
             out[token] = out.get(token, 0.0) + bal
@@ -156,16 +184,34 @@ def load_block_to_date_map(block_to_date_csv: str) -> pd.DataFrame:
 
 # --------------------------- Price Utilities ------------------------
 
-@lru_cache(maxsize=None)
-def load_price_file(token: str, prices_dir: str) -> Optional[pd.DataFrame]:
-    """Load a token price CSV into a DataFrame, if present."""
+# Each token's full price CSV is parsed at most ONCE per run and kept as a
+# sorted Series; every window/date lookup slices this cache. Before this
+# cache the same CSVs were re-read from disk for every batch of every block.
+# None entries cache missing/unreadable files so they aren't re-probed.
+_FULL_PRICE_SERIES: Dict[Tuple[str, str], Optional[pd.Series]] = {}
+
+
+def _full_price_series(token: str, prices_dir: str) -> Optional[pd.Series]:
+    """Full daily-close history for a token (normalized, sorted, unique
+    DatetimeIndex — duplicate dates keep the first row, matching the old
+    exact-match lookup). Loaded from CSV once per run."""
+    key = (token.lower(), prices_dir)
+    if key in _FULL_PRICE_SERIES:
+        return _FULL_PRICE_SERIES[key]
     price_file = Path(prices_dir) / f"{token.lower()}_price.csv"
-    if not price_file.exists():
-        return None
-    df = pd.read_csv(price_file, usecols=["date", "daily_close_usd"])
-    df["date"] = pd.to_datetime(df["date"]).dt.date
-    df = df.sort_values("date")
-    return df
+    ser: Optional[pd.Series] = None
+    if price_file.exists():
+        try:
+            df = pd.read_csv(price_file, usecols=["date", "daily_close_usd"])
+            df["date"] = pd.to_datetime(df["date"]).dt.tz_localize(None).dt.normalize()
+            df = df.sort_values("date").drop_duplicates("date", keep="first")
+            ser = pd.Series(
+                df["daily_close_usd"].astype(float).values, index=df["date"].values
+            )
+        except Exception:
+            ser = None
+    _FULL_PRICE_SERIES[key] = ser
+    return ser
 
 
 def get_price_for_date(
@@ -177,53 +223,33 @@ def get_price_for_date(
     max_fill_days: Optional[int],
 ) -> Optional[float]:
     """Return the price for a token on a date, with optional forward-fill."""
-    df = load_price_file(token, prices_dir)
-    if df is None or df.empty:
+    ser = _full_price_series(token, prices_dir)
+    if ser is None or ser.empty:
         return None
 
-    d = pd.to_datetime(target_date).date()
-
-    exact = df[df["date"] == d]
-    if not exact.empty:
-        return float(exact["daily_close_usd"].iloc[0])
+    d = pd.to_datetime(target_date).normalize()
+    idx = int(ser.index.searchsorted(d, side="right")) - 1
+    if idx < 0:
+        return None
+    last_date = ser.index[idx]
+    if last_date == d:
+        return float(ser.iloc[idx])
 
     if forward_fill:
-        prior = df[df["date"] < d]
-        if not prior.empty:
-            last_row = prior.iloc[-1]
-            last_date = last_row["date"]
-            delta = d - last_date
-            if max_fill_days is not None and delta.days > max_fill_days:
-                return None
-            return float(last_row["daily_close_usd"])
+        delta_days = (d - last_date).days
+        if max_fill_days is not None and delta_days > max_fill_days:
+            return None
+        return float(ser.iloc[idx])
 
     return None
 
 
-def compute_portfolio_value_from_units(
-    units: Dict[str, float],
-    snapshot_date: pd.Timestamp,
-    *,
-    prices_dir: str,
-    config: RiskConfig,
-) -> Optional[float]:
-    """Compute the USD value of holdings units at a snapshot date."""
-    if not units:
-        return 0.0
-
-    total = 0.0
-    for token, amount in units.items():
-        price = get_price_for_date(
-            token,
-            snapshot_date,
-            prices_dir=prices_dir,
-            forward_fill=config.forward_fill_prices,
-            max_fill_days=config.max_price_staleness_days,
-        )
-        if price is None:
-            return None
-        total += float(amount) * float(price)
-    return total
+def _window_date_index(snapshot_date: pd.Timestamp, window_days: int) -> pd.DatetimeIndex:
+    """The lookback window index: window_days ending the day BEFORE snapshot."""
+    snapshot_date = pd.to_datetime(snapshot_date).tz_localize(None)
+    end_date = min(snapshot_date.normalize(), pd.Timestamp.now().normalize()) - pd.Timedelta(days=1)
+    start_date = end_date - pd.Timedelta(days=window_days)
+    return pd.date_range(start=start_date, end=end_date, freq="D")
 
 
 def load_price_window_data(
@@ -233,33 +259,22 @@ def load_price_window_data(
     prices_dir: str,
     required_cols: Tuple[str, str] = ("date", "daily_close_usd"),
 ) -> pd.DataFrame:
-    """Load a historical price window for a set of tokens."""
-    snapshot_date = pd.to_datetime(snapshot_date).tz_localize(None)
-    prices_dir_path = Path(prices_dir)
+    """Build a historical price window for a set of tokens (cached CSVs).
 
-    end_date = min(snapshot_date.normalize(), pd.Timestamp.now().normalize()) - pd.Timedelta(days=1)
-    start_date = end_date - pd.Timedelta(days=config.window_days)
-    date_index = pd.date_range(start=start_date, end=end_date, freq="D")
+    A token is included iff it has at least one price inside the window —
+    the same membership rule as the old per-call CSV filtering.
+    """
+    date_index = _window_date_index(snapshot_date, config.window_days)
 
     series_map: Dict[str, pd.Series] = {}
     for token in tokens:
-        token_file = prices_dir_path / f"{token.lower()}_price.csv"
-        if not token_file.exists():
+        ser = _full_price_series(token, prices_dir)
+        if ser is None or ser.empty:
             continue
-
-        try:
-            df = pd.read_csv(token_file, usecols=list(required_cols))
-            df["date"] = pd.to_datetime(df["date"]).dt.tz_localize(None).dt.normalize()
-        except Exception:
+        window = ser.reindex(date_index)
+        if int(window.notna().sum()) == 0:
             continue
-
-        df = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
-        if df.empty:
-            continue
-
-        series = pd.Series(df["daily_close_usd"].astype(float).values, index=df["date"].values)
-        series = series.reindex(date_index)
-        series_map[token] = series
+        series_map[token] = window
 
     if not series_map:
         return pd.DataFrame(index=date_index)
@@ -273,30 +288,18 @@ def build_price_window_arrays(
     config: RiskConfig,
     prices_dir: str,
 ) -> Tuple[pd.DatetimeIndex, Dict[str, np.ndarray]]:
-    """Load a price window and return aligned arrays by token."""
-    snapshot_date = pd.to_datetime(snapshot_date).tz_localize(None)
-    prices_dir_path = Path(prices_dir)
-
-    end_date = min(snapshot_date.normalize(), pd.Timestamp.now().normalize()) - pd.Timedelta(days=1)
-    start_date = end_date - pd.Timedelta(days=config.window_days)
-    date_index = pd.date_range(start=start_date, end=end_date, freq="D")
+    """Build a price window as aligned arrays by token (cached CSVs)."""
+    date_index = _window_date_index(snapshot_date, config.window_days)
 
     arrays: Dict[str, np.ndarray] = {}
     for token in tokens:
-        token_file = prices_dir_path / f"{token.lower()}_price.csv"
-        if not token_file.exists():
+        ser = _full_price_series(token, prices_dir)
+        if ser is None or ser.empty:
             continue
-        try:
-            df = pd.read_csv(token_file, usecols=["date", "daily_close_usd"])
-            df["date"] = pd.to_datetime(df["date"]).dt.tz_localize(None).dt.normalize()
-            df = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
-            if df.empty:
-                continue
-            series = pd.Series(df["daily_close_usd"].astype(float).values, index=df["date"].values)
-            series = series.reindex(date_index)
-            arrays[token] = series.values
-        except Exception:
+        window = ser.reindex(date_index)
+        if int(window.notna().sum()) == 0:
             continue
+        arrays[token] = window.values
 
     return date_index, arrays
 
@@ -317,6 +320,45 @@ def load_supply_data(csv_path: str) -> Dict[str, List[Tuple[int, float]]]:
     for _, row in df.iterrows():
         result[row["token_address"]].append((int(row["block"]), float(row["supply"])))
     return dict(result)
+
+
+def load_eth_supply_override(
+    csv_path: str,
+    block_map: pd.DataFrame,
+    max_fill_days: int = 7,
+) -> Tuple[List[Tuple[int, float]], List[int]]:
+    """Per-snapshot ETH supply from a DAILY circulating-supply CSV.
+
+    The CSV needs a `date` column and a `circulating_supply` (or `supply`)
+    column, e.g. the <pseudo>_supply.csv of eth_src/5_0_fetch_eth_price_history.py.
+    Every block of `block_map` (block_number, date) gets the value on its date,
+    or the latest value up to `max_fill_days` earlier. Returns the sorted
+    (block, supply) list plus the blocks that could not be resolved.
+
+    Why an override: the inequality CSV's ETH supply is the sum of all
+    execution-layer balances, which after Shapella double counts withdrawn ETH
+    (the beacon deposit contract keeps every ETH ever deposited while the
+    withdrawals are credited again), about +31% by December 2025. Market
+    capitalisation is price times circulating supply."""
+    df = pd.read_csv(csv_path)
+    col = next((c for c in ("circulating_supply", "supply") if c in df.columns), None)
+    if col is None or "date" not in df.columns:
+        raise ValueError(f"{csv_path}: need columns 'date' and 'circulating_supply' (or 'supply'); got {list(df.columns)}")
+    ser = pd.Series(pd.to_numeric(df[col], errors="coerce").to_numpy(),
+                    index=pd.to_datetime(df["date"], errors="coerce").dt.normalize())
+    ser = ser[~ser.index.isna()].dropna().sort_index()
+    ser = ser[~ser.index.duplicated(keep="last")]
+    entries: List[Tuple[int, float]] = []
+    missing: List[int] = []
+    for blk, date in zip(block_map["block_number"], block_map["date"]):
+        d = pd.Timestamp(date).normalize()
+        window = ser.loc[d - pd.Timedelta(days=int(max_fill_days)): d]
+        if window.empty or float(window.iloc[-1]) <= 0:
+            missing.append(int(blk))
+            continue
+        entries.append((int(blk), float(window.iloc[-1])))
+    entries.sort()
+    return entries, sorted(missing)
 
 
 def get_supply_at_block(
@@ -483,96 +525,104 @@ def pick_block_index_tokens(df_block: pd.DataFrame, top_k: int = 30) -> List[str
 
 # ------------------------- Optimization Prep ------------------------
 
-def prepare_portfolio_data_for_optimization(
-    holdings_snapshot: Dict[str, float],
-    snapshot_date: pd.Timestamp,
+def _prepare_set_payload(
+    analytics: PortfolioAnalytics,
     config: RiskConfig,
-    prices_dir: str,
-    *,
-    zero_threshold: Optional[float] = None,
-    preloaded_prices_df: Optional[pd.DataFrame] = None,
-) -> Dict[str, Any]:
-    """Prepare prices and returns needed for optimization."""
-    if zero_threshold is None:
-        zero_threshold = config.zero_threshold
-
-    analytics = PortfolioAnalytics(config)
-
-    if preloaded_prices_df is not None:
-        prices_df = preloaded_prices_df
-    else:
-        prices_df = load_price_window_data(
-            tokens=list(holdings_snapshot.keys()),
-            snapshot_date=snapshot_date,
-            config=config,
-            prices_dir=prices_dir,
-        )
-    if prices_df.empty:
-        return {"error": "No price data available in the chosen window."}
-
-    return analytics.prepare_portfolio_data(
-        holdings_snapshot=holdings_snapshot,
+    candidate_tokens: List[str],
+    snapshot_date: pd.Timestamp,
+    prices_df: pd.DataFrame,
+    mu_shrink_lambda: float,
+    mu_trim_frac: float,
+) -> Optional[Dict[str, Any]]:
+    """Token-SET-level math, identical for every wallet holding the same
+    ordered set of priced tokens: aligned returns, shrunk covariance,
+    cross-mean-shrunk expected returns, snapshot prices, and the
+    wallet-independent max-Sharpe weights. None when the set can't be
+    optimized (insufficient prices/periods/assets)."""
+    # Dummy unit balances: prepare_portfolio_data's set-level outputs
+    # (alignment, returns, snapshot prices) don't depend on balances, and its
+    # only wallet-level outputs (weights/total) are recomputed in
+    # _solve_wallet. zero_threshold=0 because callers pre-filter holdings.
+    prep = analytics.prepare_portfolio_data(
+        holdings_snapshot={t: 1.0 for t in candidate_tokens},
         snapshot_date=snapshot_date,
         prices_df=prices_df,
-        zero_threshold=zero_threshold,
-    )
-
-
-def optimize_at_snapshot_custom_only(
-    holdings_json_field: Any,
-    snapshot_date: pd.Timestamp,
-    config: RiskConfig,
-    prices_dir: str,
-    mean_reversion_strength: float,
-    *,
-    mu_trim_frac: float = 0.05,
-    preloaded_prices_df: Optional[pd.DataFrame] = None,
-) -> Optional[Dict[str, Any]]:
-    """Optimize portfolio weights for a single snapshot."""
-    holdings_map = extract_holdings_map(holdings_json_field)
-    if not holdings_map:
-        return None
-
-    snapshot_date = pd.to_datetime(snapshot_date)
-
-    prep = prepare_portfolio_data_for_optimization(
-        holdings_snapshot=holdings_map,
-        snapshot_date=snapshot_date,
-        config=config,
-        prices_dir=prices_dir,
-        zero_threshold=config.zero_threshold,
-        preloaded_prices_df=preloaded_prices_df,
+        zero_threshold=0.0,
     )
     if "error" in prep:
         return None
 
     tokens = prep["final_tokens"]
     returns_df = prep["returns_df"]
-    w_cur_raw = np.array(prep["weights"], dtype=float)
     if len(tokens) < 2:
         return None
 
-    analytics = PortfolioAnalytics(config)
     cov = analytics.ensure_positive_definite(analytics.estimate_covariance_matrix(returns_df))
 
     mu_raw = returns_df.apply(lambda s: analytics.trimmed_mean(s, frac=float(mu_trim_frac)), axis=0)
-    mr_stats = analytics.compute_mean_reversion_metrics(returns_df)
-    mu_adj = analytics.adjust_expected_returns_for_mean_reversion(
-        mu_raw,
-        mr_stats,
-        strength=mean_reversion_strength,
+    # Bayes-Stein-style shrinkage toward this asset set's cross-sectional
+    # mean (the paper's return regularisation, lambda default 0.5). Replaced the AR(1)
+    # damping on 2026-08-25.
+    mu_adj = analytics.shrink_expected_returns_to_cross_mean(
+        mu_raw, lam=mu_shrink_lambda,
     )
     mu = mu_adj.loc[returns_df.columns].values
 
+    w_max_sharpe = analytics.max_sharpe_weights(
+        mu=mu,
+        cov=cov,
+        long_only=config.long_only,
+        cap=config.max_weight_single_asset,
+    )
+
+    return {
+        "final_tokens": tokens,
+        "returns_df": returns_df,
+        "snapshot_prices": prep["snapshot_prices"],
+        "cov": cov,
+        "mu": mu,
+        # plain (untrimmed) means, as compute_portfolio_metrics uses for the
+        # initial-portfolio expected return
+        "metrics_mu": returns_df.mean().values,
+        "w_max_sharpe": w_max_sharpe,
+    }
+
+
+def _solve_wallet(
+    payload: Dict[str, Any],
+    holdings_map: Dict[str, float],
+    analytics: PortfolioAnalytics,
+    config: RiskConfig,
+) -> Optional[Dict[str, Any]]:
+    """Wallet-level part of the optimization: weights from this wallet's
+    balances, the two target-constrained solves, units and L1 gaps."""
+    tokens: List[str] = payload["final_tokens"]
+    returns_df: pd.DataFrame = payload["returns_df"]
+    snapshot_prices: Dict[str, float] = payload["snapshot_prices"]
+    cov = payload["cov"]
+    mu = payload["mu"]
+
+    filtered_holdings0 = {t: float(holdings_map[t]) for t in tokens}
+    position_values: Dict[str, float] = {}
+    total_value0 = 0.0
+    for t in tokens:
+        val = filtered_holdings0[t] * float(snapshot_prices[t])
+        position_values[t] = val
+        total_value0 += val
+    if total_value0 <= 0:
+        return None
+
+    w_cur_raw = np.array([position_values[t] / total_value0 for t in tokens], dtype=float)
     w_cur = analytics.project_long_only_cap(w_cur_raw, cap=float(config.max_weight_single_asset))
 
+    # Initial-portfolio metrics: same math as compute_portfolio_metrics, but
+    # reusing the payload's covariance instead of re-shrinking it per wallet.
     initial_variance_daily = np.nan
     initial_expected_return_daily = np.nan
     try:
-        metrics_payload = analytics.compute_portfolio_metrics(returns_df, w_cur)
-        metrics = metrics_payload.get("metrics", {}) if isinstance(metrics_payload, dict) else {}
-        initial_variance_daily = float(metrics.get("variance_daily", np.nan))
-        initial_expected_return_daily = float(metrics.get("expected_return_daily", np.nan))
+        if not returns_df.empty and w_cur.size:
+            initial_variance_daily = float(w_cur @ cov @ w_cur)
+            initial_expected_return_daily = float(w_cur @ payload["metrics_mu"])
     except Exception:
         initial_variance_daily = np.nan
         initial_expected_return_daily = np.nan
@@ -591,6 +641,11 @@ def optimize_at_snapshot_custom_only(
         long_only=config.long_only,
         cap=config.max_weight_single_asset,
     )
+    # True when the better-return solve silently substituted max-Sharpe
+    # weights (2-asset target infeasible or failed SLSQP); surfaced as the
+    # wallet-level better_return_fallback_used column so the substitution
+    # rate is measurable per block.
+    better_fallback_used = bool(getattr(analytics, "last_mrv_fallback", False))
 
     w_safer_risk = analytics.min_variance_target_return(
         mu=mu,
@@ -599,17 +654,13 @@ def optimize_at_snapshot_custom_only(
         long_only=config.long_only,
         cap=config.max_weight_single_asset,
     )
+    # True when BOTH the equality and the relaxed >= solve failed and the
+    # global min-variance portfolio was substituted (return constraint
+    # dropped entirely).
+    safer_fallback_used = bool(getattr(analytics, "last_minvar_fallback", False))
 
-    w_max_sharpe = analytics.max_sharpe_weights(
-        mu=mu,
-        cov=cov,
-        long_only=config.long_only,
-        cap=config.max_weight_single_asset,
-    )
+    w_max_sharpe = payload["w_max_sharpe"]
 
-    snapshot_prices: Dict[str, float] = prep["snapshot_prices"]
-    total_value0 = float(prep["total_value"])
-    filtered_holdings0: Dict[str, float] = prep["filtered_holdings"]
     token_to_idx = {token: i for i, token in enumerate(tokens)}
 
     def units_from_weights(weights: np.ndarray) -> Dict[str, float]:
@@ -643,6 +694,8 @@ def optimize_at_snapshot_custom_only(
         "l1_gap_better_return": l1_gap_better,
         "l1_gap_safer_risk": l1_gap_safer,
         "l1_gap_max_sharpe": l1_gap_sharpe,
+        "better_return_fallback_used": better_fallback_used,
+        "safer_risk_fallback_used": safer_fallback_used,
         "initial_variance_daily": initial_variance_daily,
         "initial_expected_return_daily": initial_expected_return_daily,
         "tokens": tokens,
@@ -715,7 +768,7 @@ def _normalize_wallet_address(raw: Any) -> Optional[str]:
 
 
 def _safe_hm(value: Any) -> Dict[str, float]:
-    """Parse holdings JSON into a map; return {} on failure."""
+    """Parse a holdings field into a map; return {} on failure."""
     try:
         return extract_holdings_map(value)
     except Exception:
@@ -730,7 +783,9 @@ def iter_holdings_wallet_batches_for_block(
     max_wallets: Optional[int],
 ) -> Iterator[pd.DataFrame]:
     """Stream holdings rows for a block in batch-sized DataFrames."""
-    holdings_ds = ds.dataset(holdings_parquet, format="parquet")
+    # partitioning="hive" lets this accept the block-partitioned dataset built by
+    # 4_2 (block_number lives in the directory name); harmless on a single file.
+    holdings_ds = ds.dataset(holdings_parquet, format="parquet", partitioning="hive")
     for required_col in ["wallet_address", "block_number", "holdings"]:
         if required_col not in holdings_ds.schema.names:
             raise ValueError(f"Column {required_col!r} not found in holdings parquet.")
@@ -742,6 +797,15 @@ def iter_holdings_wallet_batches_for_block(
         cols.append("block_number")
 
     filter_expr = ds.field("block_number") == int(block_number)
+    if "num_tokens" in holdings_ds.schema.names:
+        # Predicate pushdown: single-token rows (~74% of the ETH-era dataset)
+        # are skipped at scan time — before the fat `holdings` column is
+        # decoded and converted to pandas — instead of being materialized
+        # just to be dropped by the num_tokens >= 2 eligibility filter in
+        # the caller (which stays, as belt and braces). NULL num_tokens rows
+        # are dropped by both. Note: `scanned=` in batch log lines therefore
+        # counts post-pushdown rows, not raw dataset rows.
+        filter_expr = filter_expr & (ds.field("num_tokens") >= 2)
     batch_size = max(int(batch_size), 1)
     buffer: List[pd.DataFrame] = []
     buffer_count = 0
@@ -779,7 +843,7 @@ def iter_holdings_wallet_batches_for_block(
 
 def discover_blocks_in_holdings(holdings_parquet: str) -> List[int]:
     """Discover unique block numbers present in holdings parquet."""
-    holdings_ds = ds.dataset(holdings_parquet, format="parquet")
+    holdings_ds = ds.dataset(holdings_parquet, format="parquet", partitioning="hive")
     if "block_number" not in holdings_ds.schema.names:
         raise ValueError("holdings_parquet must contain a 'block_number' column.")
 
@@ -871,12 +935,26 @@ GLOBAL_TOKEN_PRICES: Dict[str, np.ndarray] = {}
 GLOBAL_DATE_INDEX: Optional[pd.DatetimeIndex] = None
 GLOBAL_CONFIG: Optional[RiskConfig] = None
 GLOBAL_PRICES_DIR: Optional[str] = None
-GLOBAL_MEAN_REV: float = 0.0
+GLOBAL_MU_SHRINK: float = 0.0
 GLOBAL_MARKET_REGIME: str = "UNKNOWN"
 GLOBAL_TOKEN_BETAS: Dict[str, Dict[str, float]] = {}
 GLOBAL_MARKET_RETURN_20D: float = float("nan")
-GLOBAL_SUPPLY_LOOKUP: Dict[str, List[Tuple[int, float]]] = {}
-GLOBAL_BLOCK_NUMBER: int = 0
+# Precomputed once per batch in the parent (all wallets in a block share the
+# same snapshot/horizon dates): horizon-date price and market cap per token.
+# Workers do dict lookups instead of per-wallet CSV filtering/bisecting.
+GLOBAL_HORIZON_PRICES: Dict[str, float] = {}
+GLOBAL_MCAPS: Dict[str, Optional[float]] = {}
+GLOBAL_ANALYTICS: Optional[PortfolioAnalytics] = None
+
+# Per-worker LRU of _prepare_set_payload results, keyed by the ORDERED tuple
+# of a wallet's priced tokens. Ordered (not sorted) so the covariance/solver
+# variable order — and therefore every result bit — matches the uncached
+# path. Wallets holding the same token set (dominant once native ETH joins:
+# millions of {ETH, tokenX} pairs) skip the alignment + Ledoit-Wolf +
+# trimmed-mean + mu-shrinkage + max-Sharpe work entirely. The size cap bounds
+# worker memory on batches full of distinct exotic sets.
+_SET_CACHE: "OrderedDict[Tuple[str, ...], Optional[Dict[str, Any]]]" = OrderedDict()
+_SET_CACHE_MAX = 20_000
 
 BENCHMARK_TOKENS: Tuple[str, ...] = (
     "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",  # WETH
@@ -903,28 +981,91 @@ def _worker_init(
     date_index: pd.DatetimeIndex,
     config: RiskConfig,
     prices_dir: str,
-    mean_reversion_strength: float,
+    mu_shrink_lambda: float,
     market_regime: str,
     token_betas: Dict[str, Dict[str, float]],
     market_return_20d: float,
-    supply_lookup: Dict[str, List[Tuple[int, float]]],
-    block_number: int,
+    horizon_prices: Dict[str, float],
+    mcap_by_token: Dict[str, Optional[float]],
 ) -> None:
     """Initialize global state for worker processes."""
     global GLOBAL_TOKEN_PRICES, GLOBAL_DATE_INDEX, GLOBAL_CONFIG, GLOBAL_PRICES_DIR
-    global GLOBAL_MEAN_REV, GLOBAL_MARKET_REGIME
+    global GLOBAL_MU_SHRINK, GLOBAL_MARKET_REGIME
     global GLOBAL_TOKEN_BETAS, GLOBAL_MARKET_RETURN_20D
-    global GLOBAL_SUPPLY_LOOKUP, GLOBAL_BLOCK_NUMBER
+    global GLOBAL_HORIZON_PRICES, GLOBAL_MCAPS, GLOBAL_ANALYTICS
     GLOBAL_TOKEN_PRICES = token_prices
     GLOBAL_DATE_INDEX = date_index
     GLOBAL_CONFIG = config
     GLOBAL_PRICES_DIR = prices_dir
-    GLOBAL_MEAN_REV = float(mean_reversion_strength)
+    GLOBAL_MU_SHRINK = float(mu_shrink_lambda)
     GLOBAL_MARKET_REGIME = str(market_regime).upper()
     GLOBAL_TOKEN_BETAS = token_betas
     GLOBAL_MARKET_RETURN_20D = float(market_return_20d)
-    GLOBAL_SUPPLY_LOOKUP = supply_lookup
-    GLOBAL_BLOCK_NUMBER = int(block_number)
+    GLOBAL_HORIZON_PRICES = horizon_prices
+    GLOBAL_MCAPS = mcap_by_token
+    GLOBAL_ANALYTICS = PortfolioAnalytics(config)
+    # the cached payloads are only valid for this batch's price arrays
+    _SET_CACHE.clear()
+
+
+def _value_from_price_map(
+    units: Dict[str, float],
+    price_map: Dict[str, float],
+) -> Optional[float]:
+    """USD value of holdings units from a precomputed {token: price} map.
+
+    None as soon as any position's price is missing, 0.0 for empty units.
+    A NaN price propagates into the total exactly as it did through the
+    per-CSV lookup path.
+    """
+    if not units:
+        return 0.0
+    total = 0.0
+    for token, amount in units.items():
+        price = price_map.get(token)
+        if price is None:
+            return None
+        total += float(amount) * float(price)
+    return total
+
+
+def _optimize_wallet_cached(
+    holdings_map: Dict[str, float],
+    snapshot_date: pd.Timestamp,
+) -> Optional[Dict[str, Any]]:
+    """Worker-side optimize: the token-set payload is computed once per
+    distinct set and reused for every other wallet holding the same set."""
+    config = GLOBAL_CONFIG
+    analytics = GLOBAL_ANALYTICS
+    if config is None or analytics is None or not holdings_map:
+        return None
+
+    held = holdings_map
+    if config.zero_threshold > 0:
+        held = {t: u for t, u in holdings_map.items()
+                if float(u) > config.zero_threshold}
+        if not held:
+            return None
+
+    key = tuple(t for t in held if t in GLOBAL_TOKEN_PRICES)
+    if key in _SET_CACHE:
+        _SET_CACHE.move_to_end(key)
+        payload = _SET_CACHE[key]
+    else:
+        prices_df = _build_prices_df_for_tokens(list(key))
+        payload = None
+        if not prices_df.empty:
+            payload = _prepare_set_payload(
+                analytics, config, list(key), snapshot_date, prices_df,
+                GLOBAL_MU_SHRINK, 0.05,
+            )
+        _SET_CACHE[key] = payload
+        if len(_SET_CACHE) > _SET_CACHE_MAX:
+            _SET_CACHE.popitem(last=False)
+
+    if payload is None:
+        return None
+    return _solve_wallet(payload, held, analytics, config)
 
 
 def _cast_num_tokens(val: Any) -> Optional[int]:
@@ -986,23 +1127,10 @@ def _process_wallet_task(task: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]]
     except Exception:
         total_value_usd = np.nan
 
-    tokens = list(holdings_map.keys())
-    price_df = _build_prices_df_for_tokens(tokens)
-
     success_opt = False
     t_opt = time.perf_counter()
     try:
-        opt = optimize_at_snapshot_custom_only(
-            holdings_json_field=json.dumps(
-                [{"token_address": k, "balance": v} for k, v in holdings_map.items()]
-            ),
-            snapshot_date=snapshot_date,
-            config=config,
-            prices_dir=GLOBAL_PRICES_DIR or "",
-            mean_reversion_strength=GLOBAL_MEAN_REV,
-            mu_trim_frac=0.05,
-            preloaded_prices_df=price_df,
-        )
+        opt = _optimize_wallet_cached(holdings_map, snapshot_date)
     except Exception:
         opt = None
     duration = time.perf_counter() - t_opt
@@ -1062,34 +1190,26 @@ def _process_wallet_task(task: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]]
     # Equal-weight
     w_equal = np.ones(n_tokens) / n_tokens
 
-    # Market-cap-weight
+    # Market-cap-weight (mcaps precomputed per block in the parent)
     mcap_valid = False
     w_mcap = None
-    if GLOBAL_SUPPLY_LOOKUP:
+    if GLOBAL_MCAPS:
         market_caps = []
         for token in opt_tokens:
-            mcap = get_market_cap(
-                token, GLOBAL_BLOCK_NUMBER, snapshot_date,
-                GLOBAL_PRICES_DIR or "", GLOBAL_SUPPLY_LOOKUP,
-            )
+            mcap = GLOBAL_MCAPS.get(token)
             market_caps.append(mcap if (mcap is not None and mcap > 0) else None)
 
+        # Any token without a market cap keeps mcap_valid False -> all mcap
+        # fields stay null for this wallet.
         n_missing = sum(1 for mc in market_caps if mc is None)
-        if n_missing > 0:
-            missing_mcap_tokens = [t for t, mc in zip(opt_tokens, market_caps) if mc is None]
-            # log_exc(
-            #     f"[WARN] Missing market cap for {n_missing}/{n_tokens} tokens "
-            #     f"in wallet {wallet} block {block_number}: {missing_mcap_tokens}. "
-            #     f"Setting all mcap fields to null for this wallet."
-            # )
-        else:
+        if n_missing == 0:
             total_known_mcap = sum(mc for mc in market_caps if mc is not None)
             if total_known_mcap > 0:
                 mcap_array = np.array([mc / total_known_mcap for mc in market_caps])
                 w_mcap = mcap_array / mcap_array.sum()
                 mcap_valid = True
 
-    # Reuse the units_from_weights closure from optimize_at_snapshot_custom_only
+    # Same units-from-weights math as _solve_wallet's closure
     token_to_idx = {token: i for i, token in enumerate(opt_tokens)}
 
     def _units_from_w(weights: np.ndarray) -> Dict[str, float]:
@@ -1136,14 +1256,12 @@ def _process_wallet_task(task: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]]
         l1_safer_risk_vs_mcap = np.nan
         l1_max_sharpe_vs_mcap = np.nan
 
-    # --- Fixed 20-day forward evaluation ---
-    horizon_date = snapshot_date + pd.Timedelta(days=HORIZON_DAYS)
-
-    v0 = compute_portfolio_value_from_units(u0, horizon_date, prices_dir=GLOBAL_PRICES_DIR or "", config=config)
-    v1 = compute_portfolio_value_from_units(u1, horizon_date, prices_dir=GLOBAL_PRICES_DIR or "", config=config)
-    v2 = compute_portfolio_value_from_units(u2, horizon_date, prices_dir=GLOBAL_PRICES_DIR or "", config=config)
-    v3 = compute_portfolio_value_from_units(u3, horizon_date, prices_dir=GLOBAL_PRICES_DIR or "", config=config)
-    v_equal = compute_portfolio_value_from_units(units_equal, horizon_date, prices_dir=GLOBAL_PRICES_DIR or "", config=config)
+    # --- Fixed 20-day forward evaluation (horizon prices precomputed) ---
+    v0 = _value_from_price_map(u0, GLOBAL_HORIZON_PRICES)
+    v1 = _value_from_price_map(u1, GLOBAL_HORIZON_PRICES)
+    v2 = _value_from_price_map(u2, GLOBAL_HORIZON_PRICES)
+    v3 = _value_from_price_map(u3, GLOBAL_HORIZON_PRICES)
+    v_equal = _value_from_price_map(units_equal, GLOBAL_HORIZON_PRICES)
 
     r0 = (v0 / total_value0) - 1.0 if (v0 is not None and v0 > 0) else float("nan")
     r1 = (v1 / total_value0) - 1.0 if (v1 is not None and v1 > 0) else float("nan")
@@ -1152,7 +1270,7 @@ def _process_wallet_task(task: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]]
     r_equal = (v_equal / total_value0) - 1.0 if (v_equal is not None and v_equal > 0) else float("nan")
 
     if mcap_valid:
-        v_mcap = compute_portfolio_value_from_units(units_mcap, horizon_date, prices_dir=GLOBAL_PRICES_DIR or "", config=config)
+        v_mcap = _value_from_price_map(units_mcap, GLOBAL_HORIZON_PRICES)
         r_mcap = (v_mcap / total_value0) - 1.0 if (v_mcap is not None and v_mcap > 0) else float("nan")
     else:
         r_mcap = np.nan
@@ -1175,6 +1293,8 @@ def _process_wallet_task(task: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]]
         "l1_gap_better_return": l1_better,
         "l1_gap_safer_risk": l1_safer,
         "l1_gap_max_sharpe": l1_sharpe,
+        "better_return_fallback_used": bool(opt.get("better_return_fallback_used", False)),
+        "safer_risk_fallback_used": bool(opt.get("safer_risk_fallback_used", False)),
         "l1_baseline_vs_equal": l1_baseline_vs_equal,
         "l1_baseline_vs_mcap": l1_baseline_vs_mcap,
         "l1_better_return_vs_equal": l1_better_return_vs_equal,
@@ -1235,6 +1355,7 @@ def summarize_block_results(df_block: pd.DataFrame) -> pd.DataFrame:
         ret_col: str,
         l1_col: Optional[str],
         beta_col: Optional[str] = None,
+        fallback_col: Optional[str] = None,
     ) -> None:
         s = group[ret_col].dropna()
         count = int(len(s))
@@ -1255,6 +1376,10 @@ def summarize_block_results(df_block: pd.DataFrame) -> pd.DataFrame:
 
         b_mean, b_median = _capm_agg(group, beta_col) if beta_col else (np.nan, np.nan)
 
+        fallback_rate = np.nan
+        if fallback_col and fallback_col in group.columns and len(group):
+            fallback_rate = float(group[fallback_col].fillna(False).astype(bool).mean())
+
         rows.append(
             {
                 "date": block_date.date().isoformat(),
@@ -1272,6 +1397,7 @@ def summarize_block_results(df_block: pd.DataFrame) -> pd.DataFrame:
                 "beta_median": b_median,
                 "market_return_mean": mkt_ret_mean,
                 "market_return_median": mkt_ret_median,
+                "fallback_rate": fallback_rate,
             }
         )
 
@@ -1292,16 +1418,17 @@ def summarize_block_results(df_block: pd.DataFrame) -> pd.DataFrame:
             "beta_median": beta_bl_median,
             "market_return_mean": mkt_ret_mean,
             "market_return_median": mkt_ret_median,
+            "fallback_rate": np.nan,
         }
     )
 
     add_strategy(
         "Max Return (Same Vol)", "ret_better_return", "l1_gap_better_return",
-        beta_col="beta_better_return",
+        beta_col="beta_better_return", fallback_col="better_return_fallback_used",
     )
     add_strategy(
         "Min Variance (Same Ret)", "ret_safer_risk", "l1_gap_safer_risk",
-        beta_col="beta_safer_risk",
+        beta_col="beta_safer_risk", fallback_col="safer_risk_fallback_used",
     )
     add_strategy(
         "Max Sharpe", "ret_max_sharpe", "l1_gap_max_sharpe",
@@ -1352,6 +1479,7 @@ def summarize_block_results_by_wealth_bucket(df_block: pd.DataFrame) -> pd.DataF
             ret_col: str,
             l1_col: Optional[str],
             beta_col: Optional[str] = None,
+            fallback_col: Optional[str] = None,
         ) -> None:
             s = group[ret_col].dropna()
             count = int(len(s))
@@ -1372,6 +1500,10 @@ def summarize_block_results_by_wealth_bucket(df_block: pd.DataFrame) -> pd.DataF
 
             b_mean, b_median = _capm_agg(group, beta_col) if beta_col else (np.nan, np.nan)
 
+            fallback_rate = np.nan
+            if fallback_col and fallback_col in group.columns and len(group):
+                fallback_rate = float(group[fallback_col].fillna(False).astype(bool).mean())
+
             rows.append(
                 {
                     "date": block_date.date().isoformat(),
@@ -1390,6 +1522,7 @@ def summarize_block_results_by_wealth_bucket(df_block: pd.DataFrame) -> pd.DataF
                     "beta_median": b_median,
                     "market_return_mean": mkt_ret_mean,
                     "market_return_median": mkt_ret_median,
+                    "fallback_rate": fallback_rate,
                 }
             )
 
@@ -1411,16 +1544,17 @@ def summarize_block_results_by_wealth_bucket(df_block: pd.DataFrame) -> pd.DataF
                 "beta_median": beta_bl_median,
                 "market_return_mean": mkt_ret_mean,
                 "market_return_median": mkt_ret_median,
+                "fallback_rate": np.nan,
             }
         )
 
         add_strategy(
             "Max Return (Same Vol)", "ret_better_return", "l1_gap_better_return",
-            beta_col="beta_better_return",
+            beta_col="beta_better_return", fallback_col="better_return_fallback_used",
         )
         add_strategy(
             "Min Variance (Same Ret)", "ret_safer_risk", "l1_gap_safer_risk",
-            beta_col="beta_safer_risk",
+            beta_col="beta_safer_risk", fallback_col="safer_risk_fallback_used",
         )
         add_strategy(
             "Max Sharpe", "ret_max_sharpe", "l1_gap_max_sharpe",
@@ -1472,6 +1606,30 @@ def add_diff_status_and_score_pp(
     df.loc[is_base, "strategy_status"] = ""
 
     return df
+
+
+HOLDINGS_JSON_COLUMNS = (
+    "holdings_short", "holdings_better_return", "holdings_safer_risk",
+    "holdings_max_sharpe", "holdings_equal_weight", "holdings_mcap_weight",
+)
+
+
+def _read_block_results_for_summary(path: Path) -> pd.DataFrame:
+    """Re-read a just-written block parquet without the six JSON holdings
+    columns (no summary input, but most of the row size), so the per-block
+    summary never needs the block's records kept in memory during the run."""
+    path = Path(path)
+    if not path.exists():
+        return pd.DataFrame()
+    # Read the one file directly. pq.read_table() goes through dataset
+    # discovery with hive partitioning, and from pyarrow 17 on that also parses
+    # the parent directory name block_number=<blk> into a dictionary<int32>
+    # partition field, which then collides with the int64 block_number column
+    # stored in the file ("Unable to merge: Field block_number has
+    # incompatible types"). ParquetFile never looks at the path.
+    pf = pq.ParquetFile(path)
+    cols = [c for c in pf.schema_arrow.names if c not in HOLDINGS_JSON_COLUMNS]
+    return pf.read(columns=cols).to_pandas()
 
 
 def upsert_summary_csv(out_csv: str, df_new: pd.DataFrame) -> None:
@@ -1598,6 +1756,8 @@ def print_block_summary_table(df_summary: pd.DataFrame, title: str) -> None:
         df["diff_median_pp"] = df["diff_median_pp"].round(4)
     if "score_pp" in df.columns:
         df["score_pp"] = df["score_pp"].round(4)
+    if "fallback_rate" in df.columns:
+        df["fallback_rate"] = df["fallback_rate"].round(4)
 
     for capm_col in ["beta_mean", "beta_median", "market_return_mean", "market_return_median"]:
         if capm_col in df.columns:
@@ -1618,6 +1778,7 @@ def print_block_summary_table(df_summary: pd.DataFrame, title: str) -> None:
         "hit_rate",
         "l1_mean",
         "l1_median",
+        "fallback_rate",
         "strategy_status",
         "beta_mean",
         "beta_median",
@@ -1703,12 +1864,52 @@ def _log_batch_timeout_details(
 
 # ------------------------ Backtest Orchestration ---------------------
 
+def _wallet_records_to_table(batch_results: List[Dict[str, Any]]) -> pa.Table:
+    """Normalize a batch of wallet records into an Arrow table whose schema
+    is stable across batches (the per-block ParquetWriter fixes its schema
+    from the first batch and raises on any later mismatch)."""
+    wallet_df = pd.DataFrame(batch_results)
+    wallet_df["block_number"] = (
+        pd.to_numeric(wallet_df["block_number"], errors="coerce").astype("int64")
+    )
+    wallet_df["date"] = (
+        pd.to_datetime(wallet_df["date"], errors="coerce").dt.tz_localize(None)
+    )
+    wallet_df["total_value_usd"] = pd.to_numeric(
+        wallet_df["total_value_usd"], errors="coerce"
+    )
+    if "initial_variance_daily" in wallet_df.columns:
+        wallet_df["initial_variance_daily"] = pd.to_numeric(
+            wallet_df["initial_variance_daily"], errors="coerce"
+        )
+    if "initial_expected_return_daily" in wallet_df.columns:
+        wallet_df["initial_expected_return_daily"] = pd.to_numeric(
+            wallet_df["initial_expected_return_daily"], errors="coerce"
+        )
+    if "num_tokens" in wallet_df.columns:
+        wallet_df["num_tokens"] = (
+            pd.to_numeric(wallet_df["num_tokens"], errors="coerce").astype("Int64")
+        )
+    table = pa.Table.from_pandas(wallet_df, preserve_index=False)
+    # holdings_mcap_weight is None for every wallet holding an mcap-less
+    # token; a batch where that is ALL wallets infers as pa.null and clashes
+    # with a string column from any other batch — pin the type.
+    if "holdings_mcap_weight" in wallet_df.columns:
+        i = table.schema.get_field_index("holdings_mcap_weight")
+        table = table.set_column(
+            i,
+            pa.field("holdings_mcap_weight", pa.string()),
+            table.column(i).cast(pa.string()),
+        )
+    return table
+
+
 def run_backtest_all_blocks(
     holdings_parquet: str,
     block_to_date_csv: str,
     prices_dir: str,
     config: RiskConfig,
-    mean_reversion_strength: float,
+    mu_shrink_lambda: float,
     workers: int,
     out_csv: Optional[str],
     out_wallet_parquet: str,
@@ -1724,7 +1925,6 @@ def run_backtest_all_blocks(
     """Run the backtest over all blocks and return summary DataFrames."""
     if supply_lookup is None:
         supply_lookup = {}
-    log("[info] Using PyArrow streaming for batching and summaries.")
     try:
         block_map = load_block_to_date_map(block_to_date_csv)
         block_dates = dict(zip(block_map["block_number"], block_map["date"]))
@@ -1748,21 +1948,22 @@ def run_backtest_all_blocks(
 
         per_block_overall_rows: List[pd.DataFrame] = []
         per_block_bucket_rows: List[pd.DataFrame] = []
+        run_t0 = time.perf_counter()
 
         for bi, blk in enumerate(blocks_to_process, 1):
-            log(f"\n[block {bi}/{len(blocks_to_process)}] block={blk}")
             block_stats = OptTimingStats()
             market_regime = "UNKNOWN"
             regime_info = None
             block_date_val = block_dates.get(int(blk))
             if block_date_val is None:
-                log(f"[warn][block {blk}] Missing date in block_to_date_map; skipping block.")
-                print_opt_timing(prefix=f"[timing][block {blk}]", stats=block_stats)
+                log(f"\n[warn][block {bi}/{len(blocks_to_process)}] block={blk} "
+                    f"missing date in block_to_date_map; skipping block.")
                 continue
 
             block_date = pd.to_datetime(block_date_val).tz_localize(None)
             block_date_str = block_date.date().isoformat()
-            log(f"[block {blk}] date={block_date_str}")
+            log(f"\n[block {bi}/{len(blocks_to_process)}] block={blk} date={block_date_str}")
+            block_t0 = time.perf_counter()
 
             # Compute forward market return once per block
             forward_market_return = compute_forward_market_return(
@@ -1770,17 +1971,22 @@ def run_backtest_all_blocks(
                 horizon_days=HORIZON_DAYS,
                 prices_dir=prices_dir,
             )
+            if forward_market_return is None:
+                log(f"[warn][block {blk}] forward market return unavailable "
+                    f"(benchmark price CSVs missing or horizon window uncovered); "
+                    f"market_return and alphas will be NaN for this block.")
             market_return_20d = forward_market_return if forward_market_return is not None else float("nan")
             log(f"[capm] forward_market_return_20d={market_return_20d:.6g}")
 
             processed_wallets = 0
             eligible_selected = 0
+            critical_prices_checked = False
             columns_needed = ["wallet_address", "block_number", "holdings", "total_value_usd", "num_tokens"]
             block_wallet_dir = out_wallet_root / f"block_number={blk}"
             block_wallet_dir.mkdir(parents=True, exist_ok=True)
             wallet_file_path = block_wallet_dir / "data.parquet"
             wallet_writer: Optional[pq.ParquetWriter] = None
-            all_block_results: List[Dict[str, Any]] = []
+            records_written = 0
 
             try:
                 for batch_idx, df_batch in enumerate(
@@ -1818,7 +2024,12 @@ def run_backtest_all_blocks(
 
                     eligible = df_batch[df_batch["num_tokens"].fillna(0) >= 2].copy()
                     eligible["holdings_map"] = eligible["holdings"].apply(_safe_hm)
-                    eligible = eligible[eligible["holdings_map"].map(bool)]
+                    # len >= 2: a wallet needs at least two distinct held
+                    # tokens to ever be optimized (the payload requires two
+                    # PRICED assets). ETH+WETH-only pairs collapse to one
+                    # asset under the merge and are dropped here instead of
+                    # round-tripping through a worker just to fail.
+                    eligible = eligible[eligible["holdings_map"].map(len) >= 2]
 
                     if max_wallets is not None:
                         remaining = int(max_wallets) - eligible_selected
@@ -1849,8 +2060,10 @@ def run_backtest_all_blocks(
                     if regime_info is None:
                         idx_tokens = pick_block_index_tokens(eligible, top_k=int(regime_top_k_assets))
                         cfg_reg = dataclasses.replace(config, window_days=int(regime_lookback_days))
+                        # benchmarks appended: the regime classifier anchors on
+                        # WETH+WBTC, which the merged holdings no longer surface
                         prices_idx = load_price_window_data(
-                            tokens=idx_tokens,
+                            tokens=list(dict.fromkeys(list(idx_tokens) + list(BENCHMARK_TOKENS))),
                             snapshot_date=block_date,
                             config=cfg_reg,
                             prices_dir=prices_dir,
@@ -1879,8 +2092,11 @@ def run_backtest_all_blocks(
                     for hm in eligible["holdings_map"]:
                         unique_tokens.update(hm.keys())
 
+                    # Benchmarks are loaded unconditionally: the market-return
+                    # series and token betas need WETH+WBTC arrays, and with
+                    # the ETH/WETH merge no holdings map contains WETH anymore.
                     date_index, token_prices = build_price_window_arrays(
-                        tokens=list(unique_tokens),
+                        tokens=list(unique_tokens | set(BENCHMARK_TOKENS)),
                         snapshot_date=block_date,
                         config=config,
                         prices_dir=prices_dir,
@@ -1924,6 +2140,41 @@ def run_backtest_all_blocks(
                         )
                     else:
                         batch_token_betas = {}
+
+                    # Horizon prices + market caps are identical for every
+                    # wallet in the block — resolve them once per batch here
+                    # (cached CSV series) instead of per wallet in workers.
+                    horizon_date = block_date + pd.Timedelta(days=HORIZON_DAYS)
+                    horizon_prices: Dict[str, float] = {}
+                    for token in unique_tokens:
+                        p = get_price_for_date(
+                            token, horizon_date, prices_dir,
+                            forward_fill=config.forward_fill_prices,
+                            max_fill_days=config.max_price_staleness_days,
+                        )
+                        if p is not None:
+                            horizon_prices[token] = float(p)
+                    mcap_by_token: Dict[str, Optional[float]] = {}
+                    if supply_lookup:
+                        for token in unique_tokens:
+                            mcap_by_token[token] = get_market_cap(
+                                token, int(blk), block_date, prices_dir, supply_lookup,
+                            )
+
+                    # Once per block: the assets that MUST be priced (ETH
+                    # pseudo-token + benchmarks). A long tail of unpriced
+                    # ERC-20s is normal; these missing is a broken run.
+                    if not critical_prices_checked:
+                        critical_prices_checked = True
+                        critical = (ETH_PSEUDO_TOKEN, *BENCHMARK_TOKENS)
+                        miss_window = [t for t in critical if t not in token_prices]
+                        if miss_window:
+                            log(f"[warn][block {blk}] CRITICAL price series missing from "
+                                f"lookback window: {miss_window} (ETH pseudo-token / benchmarks)")
+                        if ETH_PSEUDO_TOKEN in unique_tokens and ETH_PSEUDO_TOKEN not in horizon_prices:
+                            log(f"[warn][block {blk}] no ETH price at horizon date "
+                                f"{horizon_date.date().isoformat()}; forward returns for "
+                                f"ETH-holding wallets will be NaN.")
 
                     tasks: List[Dict[str, Any]] = []
                     for row in eligible.itertuples(index=False):
@@ -1973,12 +2224,12 @@ def run_backtest_all_blocks(
                             date_index,
                             config,
                             prices_dir,
-                            mean_reversion_strength,
+                            mu_shrink_lambda,
                             market_regime,
                             batch_token_betas,
                             market_return_20d,
-                            supply_lookup,
-                            int(blk),
+                            horizon_prices,
+                            mcap_by_token,
                         ),
                     )
                     try:
@@ -2016,8 +2267,10 @@ def run_backtest_all_blocks(
                                 if record is not None:
                                     batch_results.append(record)
                                 if processed_wallets % 10_000 == 0:
+                                    rate = processed_wallets / max(time.perf_counter() - block_t0, 1e-9)
                                     log(
-                                        f"[block {blk}] processed={processed_wallets:,}/{eligible_selected:,} (selected)"
+                                        f"[block {blk}] processed={processed_wallets:,}/{eligible_selected:,} "
+                                        f"(selected) rate={rate:,.0f} wallets/s"
                                     )
 
                                 try:
@@ -2051,29 +2304,7 @@ def run_backtest_all_blocks(
                     skipped_count = total_tasks - completed_in_batch
 
                     if batch_results:
-                        wallet_df = pd.DataFrame(batch_results)
-                        wallet_df["block_number"] = (
-                            pd.to_numeric(wallet_df["block_number"], errors="coerce").astype("int64")
-                        )
-                        wallet_df["date"] = (
-                            pd.to_datetime(wallet_df["date"], errors="coerce").dt.tz_localize(None)
-                        )
-                        wallet_df["total_value_usd"] = pd.to_numeric(
-                            wallet_df["total_value_usd"], errors="coerce"
-                        )
-                        if "initial_variance_daily" in wallet_df.columns:
-                            wallet_df["initial_variance_daily"] = pd.to_numeric(
-                                wallet_df["initial_variance_daily"], errors="coerce"
-                            )
-                        if "initial_expected_return_daily" in wallet_df.columns:
-                            wallet_df["initial_expected_return_daily"] = pd.to_numeric(
-                                wallet_df["initial_expected_return_daily"], errors="coerce"
-                            )
-                        if "num_tokens" in wallet_df.columns:
-                            wallet_df["num_tokens"] = (
-                                pd.to_numeric(wallet_df["num_tokens"], errors="coerce").astype("Int64")
-                            )
-                        wallet_table = pa.Table.from_pandas(wallet_df, preserve_index=False)
+                        wallet_table = _wallet_records_to_table(batch_results)
                         if wallet_writer is None:
                             wallet_writer = pq.ParquetWriter(
                                 where=str(wallet_file_path),
@@ -2081,7 +2312,7 @@ def run_backtest_all_blocks(
                                 compression='zstd'
                             )
                         wallet_writer.write_table(wallet_table)
-                        all_block_results.extend(batch_results)
+                        records_written += len(batch_results)
 
                     _log_batch_progress(
                         blk,
@@ -2101,23 +2332,38 @@ def run_backtest_all_blocks(
                             len(batch_results),
                         )
             finally:
+                # NOTE: no max_wallets break here — the batch loop above stops
+                # itself once the cap is reached; a break inside this finally
+                # exits the BLOCK loop, skipping this block's summary and every
+                # remaining block.
                 if wallet_writer is not None:
                     wallet_writer.close()
-
-                if max_wallets is not None and eligible_selected >= int(max_wallets):
-                    log(f"[block {blk}] max_wallets cap reached; stopping further batches.")
-                    break
 
             if processed_wallets == 0:
                 log(f"[warn][block {blk}] No valid snapshot results, skipping.")
                 print_opt_timing(prefix=f"[timing][block {blk}]", stats=block_stats)
                 continue
 
-            df_res_block = pd.DataFrame(all_block_results) if all_block_results else pd.DataFrame()
+            # The records were streamed to the block's parquet batch by batch;
+            # re-read them (without the JSON holdings columns) for the summary
+            # instead of holding every record of the block in the parent for
+            # the whole block -- that list grew to ~50 GB per 4M wallets and
+            # made every per-batch fork of the worker pool slower and slower.
+            df_res_block = _read_block_results_for_summary(wallet_file_path) if records_written else pd.DataFrame()
             if df_res_block.empty:
                 log(f"[warn][block {blk}] No results after processing.")
                 print_opt_timing(prefix=f"[timing][block {blk}]", stats=block_stats)
                 continue
+
+            n_res = max(len(df_res_block), 1)
+            if "better_return_fallback_used" in df_res_block.columns:
+                fb_n = int(df_res_block["better_return_fallback_used"].fillna(False).astype(bool).sum())
+                log(f"[block {blk}] better-return solves substituted by max-Sharpe fallback: "
+                    f"{fb_n}/{len(df_res_block)} ({fb_n / n_res:.2%})")
+            if "safer_risk_fallback_used" in df_res_block.columns:
+                fb_n = int(df_res_block["safer_risk_fallback_used"].fillna(False).astype(bool).sum())
+                log(f"[block {blk}] safer-risk solves substituted by global min-variance fallback: "
+                    f"{fb_n}/{len(df_res_block)} ({fb_n / n_res:.2%})")
 
             zero_counts = compute_l1_zero_counts_df(df_res_block)
             df_summary_block = summarize_block_results(df_res_block)
@@ -2145,83 +2391,41 @@ def run_backtest_all_blocks(
             per_block_overall_rows.append(df_summary_block)
             per_block_bucket_rows.append(df_summary_bucket)
 
+            block_elapsed = time.perf_counter() - block_t0
+            run_elapsed = time.perf_counter() - run_t0
+            n_blocks = len(blocks_to_process)
+            est_remaining_min = (run_elapsed / bi) * (n_blocks - bi) / 60.0
+            log(f"[block {blk}] done: processed={processed_wallets:,} "
+                f"records_written={records_written:,} "
+                f"elapsed={block_elapsed / 60.0:.1f} min -> {wallet_file_path}")
+            log(f"[progress] {bi}/{n_blocks} blocks, run_elapsed={run_elapsed / 60.0:.1f} min, "
+                f"est_remaining~{est_remaining_min:.0f} min (rough: blocks differ in size)")
+
         print_opt_timing(prefix="[timing][overall]", stats=overall_stats)
 
+        # Per-block summaries were already upserted into out_csv as each block
+        # finished. The whole-dataset "OVERALL" summary that used to be built
+        # here (by reading EVERY wallet-level parquet back into memory) was
+        # removed: downstream Analytics recomputes global statistics from the
+        # wallet-level dataset itself, and the read-back could not scale to
+        # post-ETH row counts.
         df_per_block_overall = (
             pd.concat(per_block_overall_rows, ignore_index=True) if per_block_overall_rows else pd.DataFrame()
         )
         df_per_block_bucket = (
             pd.concat(per_block_bucket_rows, ignore_index=True) if per_block_bucket_rows else pd.DataFrame()
         )
-
-        # Read all wallet-level parquet back for overall summary
-        if out_wallet_root.exists() and any(out_wallet_root.rglob("*.parquet")):
-            try:
-                wallet_ds = ds.dataset(str(out_wallet_root), format="parquet")
-                df_all = wallet_ds.to_table().to_pandas()
-            except Exception:
-                df_all = pd.DataFrame()
-        else:
-            df_all = pd.DataFrame()
-
-        df_overall_summary = summarize_block_results(df_all)
-        df_overall_summary = add_diff_status_and_score_pp(df_overall_summary, w_mean=0.5, w_median=0.5)
-        if not df_overall_summary.empty:
-            df_overall_summary.loc[:, "date"] = "OVERALL"
-            df_overall_summary.loc[:, "block"] = "OVERALL"
-            df_overall_summary.loc[:, "wealth_bucket"] = "OVERALL"
-
-        df_overall_bucket_summary = summarize_block_results_by_wealth_bucket(df_all)
-        if not df_overall_bucket_summary.empty:
-            df_overall_bucket_summary = add_diff_status_and_score_pp(
-                df_overall_bucket_summary,
-                w_mean=0.5,
-                w_median=0.5,
-            )
-            df_overall_bucket_summary.loc[:, "date"] = "OVERALL"
-            df_overall_bucket_summary.loc[:, "block"] = "OVERALL"
-
-        print_block_summary_table(df_overall_summary, title="OVERALL SUMMARY (ALL BLOCKS COMBINED)")
-
         df_final_summary = pd.concat(
-            [df_per_block_overall, df_per_block_bucket, df_overall_summary, df_overall_bucket_summary],
-            ignore_index=True,
+            [df_per_block_overall, df_per_block_bucket], ignore_index=True
         )
-
-        preferred_cols = [
-            "date",
-            "block",
-            "wealth_bucket",
-            "strategy",
-            "baseline_mean",
-            "baseline_median",
-            "count_optimized",
-            "hit_rate",
-            "l1_mean",
-            "l1_median",
-            "strategy_mean",
-            "strategy_median",
-            "diff_mean_pp",
-            "diff_median_pp",
-            "score_pp",
-            "strategy_status",
-            "beta_mean",
-            "beta_median",
-            "market_return_mean",
-            "market_return_median",
-        ]
-        ordered_cols = [c for c in preferred_cols if c in df_final_summary.columns]
-        remaining_cols = [c for c in df_final_summary.columns if c not in ordered_cols]
-        df_final_summary = df_final_summary[ordered_cols + remaining_cols]
-
-        if out_csv:
-            upsert_summary_csv(out_csv, df_final_summary)
 
         return pd.DataFrame(), df_final_summary
     finally:
         GLOBAL_TOKEN_PRICES.clear()
         GLOBAL_TOKEN_BETAS.clear()
-        GLOBAL_SUPPLY_LOOKUP.clear()
+        GLOBAL_HORIZON_PRICES.clear()
+        GLOBAL_MCAPS.clear()
+        _FULL_PRICE_SERIES.clear()
 
 
 # ------------------------------- CLI ---------------------------------
@@ -2266,7 +2470,20 @@ def parse_args() -> argparse.Namespace:
     )
 
     p.add_argument("--workers", type=int, default=DEFAULT_WORKERS, help="Workers for optimization/backtest.")
-    p.add_argument("--mean-reversion-strength", type=float, default=0.5)
+    p.add_argument(
+        "--mu-shrinkage-lambda",
+        type=float,
+        default=0.5,
+        help="Linear shrinkage of expected returns toward the wallet set's "
+             "cross-asset mean: mu <- lam*mean(mu) + (1-lam)*mu "
+             "(default 0.5; 0 = no shrinkage).",
+    )
+    p.add_argument(
+        "--no-merge-eth-weth",
+        action="store_true",
+        help="Treat WETH as an asset distinct from native ETH (default: WETH "
+             "balances are folded into the ETH pseudo-token for optimization).",
+    )
     p.add_argument("--out-csv", type=str, default=DEFAULT_OUT_CSV)
     p.add_argument("--out-wallet-parquet", type=str, default=DEFAULT_OUT_WALLET_PARQUET)
 
@@ -2278,16 +2495,29 @@ def parse_args() -> argparse.Namespace:
         default="./data/token_stats.csv",
         help="Path to token supply CSV (columns: block, token_address, supply).",
     )
+    p.add_argument(
+        "--eth-supply-csv",
+        type=str,
+        default=None,
+        help="Optional DAILY circulating-supply CSV for native ETH (columns: date, "
+             "circulating_supply), e.g. <pseudo>_supply.csv from "
+             "eth_src/5_0_fetch_eth_price_history.py. Replaces the ETH rows of "
+             "--supply-csv for the market-cap-weight strategy.",
+    )
     return p.parse_args()
 
 
 def main() -> int:
     """Run the custom backtest CLI entrypoint."""
-    global HORIZON_DAYS
+    global HORIZON_DAYS, MERGE_ETH_WETH
     t0 = time.perf_counter()
     args = parse_args()
 
     HORIZON_DAYS = int(args.horizon_days)
+    if args.no_merge_eth_weth:
+        MERGE_ETH_WETH = False
+
+    mu_lam = float(args.mu_shrinkage_lambda)
 
     blocks_list = parse_blocks_arg(args.blocks)
 
@@ -2314,12 +2544,15 @@ def main() -> int:
     log(f"blocks           : {blocks_list if blocks_list is not None else 'AUTO'}")
     log(f"horizon_days     : {HORIZON_DAYS}")
     log(f"workers          : {args.workers}")
-    log(f"mean_rev_strength: {args.mean_reversion_strength}")
+    log(f"mu_shrink_lambda : {mu_lam}")
+    log(f"merge_eth_weth   : {MERGE_ETH_WETH}")
+    log(f"risk_free_annual : {cfg.risk_free_rate_annual}")
     log(f"regime_lookback_days: {args.regime_lookback_days}")
     log(f"regime_top_k_assets : {args.regime_top_k_assets}")
     log(f"out_csv          : {args.out_csv}")
     log(f"out_wallet_parquet: {args.out_wallet_parquet}")
     log(f"supply_csv       : {args.supply_csv}")
+    log(f"eth_supply_csv   : {args.eth_supply_csv or '-'}")
 
     # Load supply data for market-cap-weight strategy
     supply_lookup: Dict[str, List[Tuple[int, float]]] = {}
@@ -2330,14 +2563,34 @@ def main() -> int:
         log(f"[supply] Loaded supply data for {len(supply_lookup)} tokens.")
     else:
         log(f"[WARN] Supply CSV not found at {args.supply_csv}. "
-            f"Market-cap-weight will fall back to equal weight.")
+            f"Market-Cap Weight fields will be NULL for all wallets.")
+    if args.eth_supply_csv:
+        if not Path(args.eth_supply_csv).exists():
+            raise SystemExit(f"[supply] --eth-supply-csv not found: {args.eth_supply_csv}")
+        eth_entries, eth_missing = load_eth_supply_override(
+            args.eth_supply_csv, load_block_to_date_map(args.block_to_date_csv))
+        if eth_entries:
+            had = ETH_PSEUDO_TOKEN in supply_lookup
+            supply_lookup[ETH_PSEUDO_TOKEN] = eth_entries
+            log(f"[supply] ETH supply for {len(eth_entries)} snapshot blocks taken from "
+                f"{args.eth_supply_csv} (circulating supply"
+                f"{'; replaces the ledger balance sum of --supply-csv' if had else ''}); "
+                f"e.g. block {eth_entries[0][0]}: {eth_entries[0][1]:,.0f} ETH, "
+                f"block {eth_entries[-1][0]}: {eth_entries[-1][1]:,.0f} ETH")
+        if eth_missing:
+            log(f"[WARN] --eth-supply-csv has no value within 7 days before {len(eth_missing)} "
+                f"snapshot date(s) (blocks {eth_missing[:5]}{'...' if len(eth_missing) > 5 else ''}); "
+                f"those keep the --supply-csv value if any.")
+    if supply_lookup and ETH_PSEUDO_TOKEN not in supply_lookup:
+        log(f"[WARN] No ETH supply available (neither in --supply-csv nor via --eth-supply-csv); "
+            f"Market-Cap Weight will be NULL for every ETH-holding wallet (~most of the eligible set).")
 
     _, df_summary = run_backtest_all_blocks(
         holdings_parquet=args.holdings_parquet,
         block_to_date_csv=args.block_to_date_csv,
         prices_dir=args.prices_dir,
         config=cfg,
-        mean_reversion_strength=float(args.mean_reversion_strength),
+        mu_shrink_lambda=mu_lam,
         blocks=blocks_list,
         workers=int(args.workers),
         out_csv=args.out_csv,

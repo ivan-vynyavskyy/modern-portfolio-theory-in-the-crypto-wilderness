@@ -40,7 +40,11 @@ class RiskConfig:
 
     # annualization
     annualization_factor: int = 365
-    risk_free_rate_annual: float = 0.05
+    # 0 by decision (2026-08-25):
+    # there is no on-chain risk-free asset over the study period; a 5% rf
+    # distorted the max-Sharpe objective and all Sharpe metrics. Sensitivity
+    # checked in Analytics/distance_return_analytics/src/rf_zero_test.py.
+    risk_free_rate_annual: float = 0.0
 
     # portfolio rules
     min_assets: int = 1

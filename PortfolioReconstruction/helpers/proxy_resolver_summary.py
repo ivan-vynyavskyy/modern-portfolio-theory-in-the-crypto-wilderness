@@ -4,8 +4,11 @@ proxy_resolver_summary.py
 
 Purpose
 -------
-Summarize ERC-20 proxy-resolver verification results from a TSV into
-human-readable classification and verification tables.
+Summarize the proxy-resolver output of erc20_src/0_4_resolve_proxies_and_verify_erc20.py
+(the erc20_proxy_resolved_tsv of the pipeline config) into human-readable
+classification and verification tables. Standalone, not part of run_pipeline.py:
+
+    python helpers/proxy_resolver_summary.py data/erc20_tokens_proxy_resolved.tsv
 
 What it does
 ------------
@@ -47,8 +50,8 @@ def normalize_proxy_type(x):
     return "other"
 
 def main():
-    ap = argparse.ArgumentParser(description="Summarize ERC-20 v2 verification results for a TSV file.")
-    ap.add_argument("tsv", help="Input TSV file with columns from the v2 script")
+    ap = argparse.ArgumentParser(description="Summarize the proxy-resolver TSV written by erc20_src/0_4.")
+    ap.add_argument("tsv", help="proxy-resolver TSV (output of erc20_src/0_4_resolve_proxies_and_verify_erc20.py)")
     ap.add_argument("--drop-dupe-addresses", action="store_true",
                     help="Drop duplicate rows by address, keeping the first occurrence")
     args = ap.parse_args()

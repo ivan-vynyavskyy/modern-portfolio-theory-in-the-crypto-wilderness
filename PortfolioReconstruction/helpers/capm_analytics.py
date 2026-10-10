@@ -3,27 +3,26 @@ capm_analytics.py
 
 Purpose
 -------
-Compute CAPM metrics (betas, expected returns, single-period CAPM alpha) for ERC-20
-portfolio analysis at block-level snapshots.
+Compute CAPM inputs (token and portfolio betas, benchmark market returns) for
+the portfolio analysis at block-level snapshots.
 
 What it does
 ------------
 - Regresses individual token returns against an equal-weighted benchmark to
   obtain per-token betas via OLS.
 - Aggregates token betas into portfolio beta using portfolio weights.
-- Computes CAPM expected return and single-period CAPM alpha for forward evaluation.
-- Builds market return series from on-disk price CSVs or preloaded arrays.
+- Builds the benchmark's daily return series from preloaded price arrays and
+  its forward return over the evaluation horizon from the price CSVs.
 
 Inputs
 ------
 - Token return DataFrames and market return Series
 - Per-token price CSVs in a prices directory
-- RiskConfig for window parameters
 
 Outputs
 -------
-- Token beta dicts, portfolio beta floats, CAPM expected returns, alpha values
-- Market return pd.Series for a lookback or forward window
+- Token beta dicts and portfolio beta floats
+- Market return pd.Series for the lookback window, forward market return
 
 Notes
 -----
@@ -39,7 +38,6 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from helpers.risk_config import RiskConfig
 
 
 # ----------------------------- Token Betas -----------------------------
@@ -143,116 +141,7 @@ def compute_portfolio_beta(
     return float(port_beta)
 
 
-# ----------------------------- CAPM Expected Return --------------------
-
-def compute_capm_expected_return(
-    portfolio_beta: float,
-    market_return: float,
-    risk_free_rate: float = 0.0,
-) -> float:
-    """
-    Compute CAPM expected return.
-
-    E[R] = Rf + beta * (Rm - Rf)
-
-    Args:
-        portfolio_beta: portfolio beta
-        market_return: realized market return over the horizon
-        risk_free_rate: risk-free rate over the same horizon (default 0.0)
-
-    Returns:
-        CAPM expected return (float)
-    """
-    return risk_free_rate + portfolio_beta * (market_return - risk_free_rate)
-
-
-# ----------------------------- CAPM Alpha ------------------------------
-
-def compute_capm_alpha(
-    actual_return: float,
-    capm_expected_return: float,
-) -> float:
-    """
-    Compute Jensen's alpha.
-
-    alpha = R_actual - R_expected
-
-    Args:
-        actual_return: realized portfolio return
-        capm_expected_return: CAPM expected return
-
-    Returns:
-        Jensen's alpha (float)
-    """
-    return actual_return - capm_expected_return
-
-
 # ----------------------------- Market Returns --------------------------
-
-def build_market_return_series(
-    snapshot_date: pd.Timestamp,
-    prices_dir: str,
-    config: RiskConfig,
-    benchmark_tokens: Tuple[str, ...] = (
-        "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",  # WETH
-        "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599",  # WBTC
-    ),
-) -> pd.Series:
-    """
-    Build daily log return series for the market benchmark.
-
-    Loads price data for benchmark tokens, computes equal-weighted log returns.
-
-    Args:
-        snapshot_date: the snapshot date for the lookback window
-        prices_dir: directory containing per-token price CSVs
-        config: RiskConfig with window_days
-        benchmark_tokens: tuple of benchmark token addresses
-
-    Returns:
-        pd.Series indexed by date with daily log returns
-    """
-    snapshot_date = pd.to_datetime(snapshot_date).tz_localize(None)
-    prices_dir_path = Path(prices_dir)
-
-    end_date = min(
-        snapshot_date.normalize(),
-        pd.Timestamp.now().normalize(),
-    ) - pd.Timedelta(days=1)
-    start_date = end_date - pd.Timedelta(days=config.window_days)
-    date_index = pd.date_range(start=start_date, end=end_date, freq="D")
-
-    bench_prices: Dict[str, pd.Series] = {}
-    for token in benchmark_tokens:
-        token_file = prices_dir_path / f"{token.lower()}_price.csv"
-        if not token_file.exists():
-            continue
-        try:
-            df = pd.read_csv(token_file, usecols=["date", "daily_close_usd"])
-            df["date"] = pd.to_datetime(df["date"]).dt.tz_localize(None).dt.normalize()
-            df = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
-            if df.empty:
-                continue
-            series = pd.Series(
-                df["daily_close_usd"].astype(float).values,
-                index=df["date"].values,
-            )
-            series = series.reindex(date_index).ffill()
-            bench_prices[token] = series
-        except Exception:
-            continue
-
-    if not bench_prices:
-        return pd.Series(dtype=float)
-
-    bench_df = pd.DataFrame(bench_prices, index=date_index)
-    # Compute log returns
-    log_returns = np.log(bench_df / bench_df.shift(1))
-    # Equal-weighted mean across benchmark tokens
-    market_returns = log_returns.mean(axis=1, skipna=True).dropna()
-
-    return market_returns
-
 
 def build_market_return_series_from_arrays(
     date_index: pd.DatetimeIndex,
@@ -303,7 +192,10 @@ def compute_forward_market_return(
     """
     Compute the realized market return from snapshot_date to snapshot_date + horizon_days.
 
-    Uses log return: ln(P_{t+h} / P_t) averaged across benchmark tokens.
+    Uses the SIMPLE holding-period return, P_{t+h}/P_t - 1, averaged across
+    benchmark tokens — the same convention as the six strategy forward
+    returns in the backtest (V1/V0 - 1), so alpha-style comparisons do not
+    mix return conventions.
 
     Args:
         snapshot_date: start date
@@ -313,13 +205,13 @@ def compute_forward_market_return(
         max_staleness_days: maximum days to forward-fill a missing price
 
     Returns:
-        Realized market log return, or None if data unavailable
+        Realized market simple return, or None if data unavailable
     """
     snapshot_date = pd.to_datetime(snapshot_date).tz_localize(None)
     horizon_date = snapshot_date + pd.Timedelta(days=int(horizon_days))
     prices_dir_path = Path(prices_dir)
 
-    log_returns: List[float] = []
+    returns: List[float] = []
 
     for token in benchmark_tokens:
         token_file = prices_dir_path / f"{token.lower()}_price.csv"
@@ -336,14 +228,14 @@ def compute_forward_market_return(
             p1 = _get_price_at_date(df, horizon_date, max_staleness_days)
 
             if p0 is not None and p1 is not None and p0 > 0 and p1 > 0:
-                log_returns.append(float(np.log(p1 / p0)))
+                returns.append(float(p1 / p0 - 1.0))
         except Exception:
             continue
 
-    if not log_returns:
+    if not returns:
         return None
 
-    return float(np.mean(log_returns))
+    return float(np.mean(returns))
 
 
 def _get_price_at_date(
