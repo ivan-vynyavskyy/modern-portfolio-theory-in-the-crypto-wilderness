@@ -47,7 +47,7 @@ from collections import Counter
 from decimal import Decimal, getcontext
 from pathlib import Path
 
-# Ensure utils/ is importable when running from src/.
+# Ensure utils/ is importable when running from erc20_src/.
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))

@@ -60,7 +60,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 from deltalake import DeltaTable
 
-# Ensure helpers/ is importable when running from src/.
+# Ensure helpers/ is importable when running from erc20_src/.
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))

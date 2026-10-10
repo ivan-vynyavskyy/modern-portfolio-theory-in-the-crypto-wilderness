@@ -46,7 +46,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import requests
 
-# Ensure helpers/ is importable when running from src/.
+# Ensure helpers/ is importable when running from erc20_src/.
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))

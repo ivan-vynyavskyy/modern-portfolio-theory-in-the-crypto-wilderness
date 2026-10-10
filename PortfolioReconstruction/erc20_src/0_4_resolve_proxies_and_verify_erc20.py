@@ -50,7 +50,7 @@ from typing import Dict, Iterator, List, Optional, Sequence, Tuple
 import pandas as pd
 from web3 import Web3
 
-# Ensure helpers/ is importable when running from src/
+# Ensure helpers/ is importable when running from erc20_src/
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
@@ -319,7 +319,7 @@ def _apply_runtime_verification(
 
 def _apply_static_verification(result: Dict[str, Optional[str]], code_hex: str) -> None:
     """Run static verification and update result dict in-place."""
-    # Legacy behavior: events are not required in static checks here.
+    # The static check requires the ERC-20 function selectors only, not the events.
     if erc20_static_selectors_present(code_hex, require_events=False):
         result["verified_static"] = "Y"
 
@@ -363,7 +363,6 @@ def classify_contract(
     addr: str,
     block_id: Optional[int],
     block_mode: str,
-    require_events: bool,
 ) -> Dict[str, Optional[str]]:
     """Classify a contract address, resolving proxies and ERC-20 verification."""
     block_ref = "latest" if block_mode == "latest" else block_id
@@ -562,11 +561,6 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         choices=["latest", "deploy"],
         help="Use 'latest' or contract's deploy block for classification.",
     )
-    parser.add_argument(
-        "--no-events",
-        action="store_true",
-        help="(Legacy switch) if set, do not require events in static check.",
-    )
     return parser
 
 
@@ -582,9 +576,6 @@ def main() -> int:
     if not w3.is_connected():
         log_exc("cannot connect to RPC.")
         return 1
-
-    require_events = not args.no_events
-    _ = require_events  # retained for API compatibility (legacy behavior)
 
     candidates: Dict[str, int] = {}
 
@@ -629,7 +620,6 @@ def main() -> int:
             addr=addr,
             block_id=block_id if block_id != 0 else None,
             block_mode=args.block_mode,
-            require_events=require_events,
         )
 
         append_result(

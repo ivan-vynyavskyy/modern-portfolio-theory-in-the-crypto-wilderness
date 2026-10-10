@@ -27,7 +27,9 @@ Inputs
 
 Outputs
 -------
-- --output (Parquet; columns: wallet_address, block_number, total_value_usd, num_tokens, holdings)
+- --output (Parquet, zstd; columns: wallet_address, block_number, total_value_usd,
+  num_tokens, holdings — holdings is a nested list<struct{token_address, balance,
+  value_usd}> column; percentage is derivable as value_usd / total_value_usd)
 
 CLI
 ---
@@ -46,7 +48,10 @@ Examples:
 Notes
 -----
 - Snapshot dates are a fixed policy (monthly starts plus curated event neighbors).
-- Balances are aggregated up to each snapshot block and stored as strings in output JSON.
+- Balances are aggregated up to each snapshot block; balance is stored as an
+  exact decimal string inside the nested holdings column, value_usd as double.
+- Native ETH (pseudo-token 0xee...ee) is always whitelisted; its price CSV and
+  decimals-cache entry (18) must exist like for any other token.
 - Optional overflow cleaning can drop suspect tokens and burn wallets.
 """
 
@@ -64,12 +69,11 @@ import sys
 import time
 import traceback
 import uuid
-from collections import deque
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation, ROUND_DOWN, getcontext
 from functools import lru_cache
 from multiprocessing import Event, Process, Queue, cpu_count
-from typing import Any, Deque, Dict, Iterable, Iterator, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, Iterator, List, Optional, Set, Tuple
 
 import multiprocessing as mp
 
@@ -82,7 +86,7 @@ import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 from web3 import HTTPProvider, Web3
 
-# Ensure utils/ is importable when running from src/.
+# Ensure utils/ is importable when running from erc20_src/.
 ROOT_DIR = pathlib.Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
@@ -113,12 +117,28 @@ WORKER_TIMEOUT_SEC = 3600
 MIN_BATCH_TO_SPLIT = 4_000
 SLEEP_POLL_SEC = 0.25
 
+# Native ETH pseudo-token (output of eth_transfer_aggregator.py): always
+# whitelisted, independent of the token-status CSV — native ETH has no
+# contract row there.
+ETH_PSEUDO_TOKEN = "0x" + "ee" * 20
+ETH_TOKEN_NAME = "Ethereum"
+
+# holdings is a REAL nested column (list<struct>), not a JSON string:
+# parquet dictionary-encodes the repeated token_address values and stores
+# the field names once in the schema, which is what makes the file small.
+# `percentage` is not stored (derivable: value_usd / total_value_usd).
+HOLDINGS_TYPE = pa.list_(pa.struct([
+    pa.field("token_address", pa.string()),
+    pa.field("balance", pa.string()),
+    pa.field("value_usd", pa.float64()),
+]))
+
 OUTPUT_SCHEMA = pa.schema([
     pa.field("wallet_address", pa.string()),
     pa.field("block_number", pa.int64()),
     pa.field("total_value_usd", pa.string()),
     pa.field("num_tokens", pa.int32()),
-    pa.field("holdings", pa.string()),
+    pa.field("holdings", HOLDINGS_TYPE),
 ])
 
 
@@ -135,6 +155,13 @@ class OptimizationConfig:
     duckdb_memory: str = "2GB"
     forward_fill_price: bool = True
     lru_cache_size: int = 4096
+    # concurrent chunk threads per worker; each holds ONE DuckDB connection
+    # capped at duckdb_memory, so worker memory ~= chunk_threads x duckdb_mem
+    token_chunk_threads: int = 2
+    # wallet batches are contiguous sorted-address ranges; adding
+    # address BETWEEN lo AND hi to every ledger query lets parquet row-group
+    # stats prune the (address-sorted) token files down to the batch's slice
+    range_pruning: bool = True
 
 
 # ======================= Utility =======================
@@ -241,6 +268,11 @@ def load_token_status_data(csv_path: str) -> Tuple[List[str], Dict[str, str]]:
             token_name_map[addr] = candidate
         elif existing in ("", "UNKNOWN") and candidate not in ("", "UNKNOWN"):
             token_name_map[addr] = candidate
+
+    # Force-include native ETH regardless of the CSV contents.
+    if ETH_PSEUDO_TOKEN not in whitelist_tokens:
+        whitelist_tokens.append(ETH_PSEUDO_TOKEN)
+    token_name_map.setdefault(ETH_PSEUDO_TOKEN, ETH_TOKEN_NAME)
 
     return whitelist_tokens, token_name_map
 
@@ -488,9 +520,109 @@ def resolve_blocks_for_dates(
 
 # ======================= Core aggregation per token =======================
 
+import queue as _queue_mod
+
+# per-process pool of tuned DuckDB connections (persistent workers reuse
+# them across batches, keeping the parquet-footer object cache warm)
+_DUCKDB_POOL: "_queue_mod.Queue" = _queue_mod.Queue()
+
+
+def _borrow_connection(cfg: OptimizationConfig) -> duckdb.DuckDBPyConnection:
+    try:
+        return _DUCKDB_POOL.get_nowait()
+    except _queue_mod.Empty:
+        con = duckdb.connect()
+        try:
+            con.execute(f"SET threads={int(max(1, min(cfg.duckdb_threads, 8)))}")
+            con.execute(f"SET memory_limit='{cfg.duckdb_memory}'")
+            con.execute("SET enable_object_cache=true")
+        except Exception:
+            pass
+        return con
+
+
+def _return_connection(con: duckdb.DuckDBPyConnection) -> None:
+    _DUCKDB_POOL.put(con)
+
+
 def _sql_quote_path(p: str) -> str:
     """Quote a path for DuckDB SQL string literals."""
     return "'" + p.replace("'", "''") + "'"
+
+
+def _range_pred(addr_range: Optional[Tuple[str, str]], col: str = "r.address") -> str:
+    """SQL predicate restricting a (sorted-by-address) ledger scan to the
+    batch's contiguous address range — this is what enables parquet
+    row-group pruning, turning full-file scans into slice reads."""
+    if not addr_range:
+        return ""
+    lo, hi = addr_range
+    return f"AND {col} >= '{lo}' AND {col} <= '{hi}' "
+
+
+# token identity comes from the hive path token_address=<addr>/
+TOKEN_FROM_FILENAME = (
+    "lower(regexp_extract(r.filename, 'token_address=(0x[0-9a-fA-F]{40})', 1))"
+)
+
+
+def query_chunk_balances(
+    chunk: List[Tuple[str, List[str]]],
+    wallet_rel: str,
+    snapshot_blocks_sorted: List[int],
+    con: duckdb.DuckDBPyConnection,
+    addr_range: Optional[Tuple[str, str]],
+) -> Tuple[Optional[pd.DataFrame], Set[str]]:
+    """One query for a whole 64-token chunk (token derived from file path).
+
+    Returns (balances df, tokens that need the per-token overflow fallback).
+    Collapsing per-token queries into per-chunk queries removes ~98% of the
+    fixed query overhead when thousands of tokens are scanned per batch.
+    """
+    files: List[str] = [f for _, fs in chunk for f in fs]
+    if not files:
+        return None, set()
+    files_str = ", ".join(_sql_quote_path(p) for p in files)
+    max_block = int(snapshot_blocks_sorted[-1])
+    # CAST(... AS VARCHAR): fetchdf() maps DECIMAL(38,0) to float64, which
+    # silently rounds any sum above 2^53 to 53 bits. Strings stay wei-exact.
+    cond_sums = ", ".join(
+        f"CAST(SUM(CASE WHEN block <= {b} AND val_dec IS NOT NULL THEN val_dec "
+        f"ELSE 0 END) AS VARCHAR) AS bal_{b}"
+        for b in snapshot_blocks_sorted
+    )
+    sql = f"""
+    WITH t AS (
+      SELECT
+        {TOKEN_FROM_FILENAME} AS token_address,
+        lower(r.address) AS address,
+        r.block,
+        TRY_CAST(r.value AS DECIMAL(38,0)) AS val_dec,
+        (r.value IS NOT NULL AND TRY_CAST(r.value AS DECIMAL(38,0)) IS NULL)
+            AS bad_cast
+      FROM read_parquet([{files_str}], filename=true, union_by_name=true) AS r
+      JOIN {wallet_rel} AS w
+        ON lower(r.address) = w.wallet
+      WHERE r.block <= {max_block} {_range_pred(addr_range)}
+    )
+    SELECT token_address, address AS wallet, {cond_sums},
+           SUM(CASE WHEN bad_cast THEN 1 ELSE 0 END) AS n_bad
+    FROM t
+    GROUP BY token_address, address
+    """
+    df = con.execute(sql).fetchdf()
+    if df.empty:
+        return None, set()
+    bad_tokens = set(df.loc[df["n_bad"] > 0, "token_address"].unique())
+    if bad_tokens:
+        df = df[~df["token_address"].isin(bad_tokens)]
+    df = df.drop(columns=["n_bad"])
+    if df.empty:
+        return None, bad_tokens
+    for c in df.columns:
+        if c.startswith("bal_"):
+            df[c] = df[c].apply(_to_py_int)
+    return df, bad_tokens
 
 
 def query_token_balances_optimized(
@@ -499,6 +631,7 @@ def query_token_balances_optimized(
     wallets: List[str],
     snapshot_blocks: List[int],
     con: duckdb.DuckDBPyConnection,
+    addr_range: Optional[Tuple[str, str]] = None,
 ) -> Optional[pd.DataFrame]:
     """Aggregate balances for a token using DuckDB with a Python fallback."""
     if not parquet_files:
@@ -514,6 +647,7 @@ def query_token_balances_optimized(
 
     max_block = int(snapshot_blocks_sorted[-1])
     files_str = ", ".join(_sql_quote_path(p) for p in parquet_files)
+    rng = _range_pred(addr_range)
 
     wallet_rel = f"wallet_filter_{uuid.uuid4().hex}"
     wallets_df = pd.DataFrame({"wallet": wallets_lc})
@@ -530,7 +664,7 @@ def query_token_balances_optimized(
               FROM read_parquet([{files_str}]) AS r
               JOIN {wallet_rel} AS w
                 ON lower(r.address) = w.wallet
-              WHERE r.block <= {max_block}
+              WHERE r.block <= {max_block} {rng}
             )
             SELECT COUNT(*) AS n_all, COUNT(val_dec) AS n_cast FROM t
             """
@@ -540,8 +674,10 @@ def query_token_balances_optimized(
             if n_cast < n_all:
                 raise ValueError("Values exceed DECIMAL(38,0) – switching to Python fallback")
 
+            # VARCHAR transport keeps sums wei-exact (see query_chunk_balances).
             cond_sums = ", ".join(
-                f"SUM(CASE WHEN block <= {b} THEN val_dec ELSE 0 END) AS bal_{b}"
+                f"CAST(SUM(CASE WHEN block <= {b} THEN val_dec ELSE 0 END) "
+                f"AS VARCHAR) AS bal_{b}"
                 for b in snapshot_blocks_sorted
             )
 
@@ -554,7 +690,7 @@ def query_token_balances_optimized(
               FROM read_parquet([{files_str}]) AS r
               JOIN {wallet_rel} AS w
                 ON lower(r.address) = w.wallet
-              WHERE r.block <= {max_block}
+              WHERE r.block <= {max_block} {rng}
             )
             SELECT
               '{token}' AS token_address,
@@ -569,7 +705,7 @@ def query_token_balances_optimized(
 
             for c in df.columns:
                 if c.startswith("bal_"):
-                    df[c] = df[c].apply(lambda x: int(x) if x is not None else 0)
+                    df[c] = df[c].apply(_to_py_int)
 
             return df
 
@@ -578,11 +714,11 @@ def query_token_balances_optimized(
             SELECT
               lower(r.address) AS address,
               r.block,
-              r.value
+              CAST(r.value AS VARCHAR) AS value
             FROM read_parquet([{files_str}]) AS r
             JOIN {wallet_rel} AS w
               ON lower(r.address) = w.wallet
-            WHERE r.block <= {max_block}
+            WHERE r.block <= {max_block} {rng}
             """
             raw = con.execute(sql_fallback).fetchdf()
             if raw.empty:
@@ -669,16 +805,9 @@ def build_portfolio_dataframe(
         return pd.DataFrame()
 
     df = pd.DataFrame(records)
-
-    df["pct"] = None
-    for w in df.wallet.unique():
-        mask = (df.wallet == w)
-        total = sum((v for v in df.loc[mask, "usd_value"] if v is not None), Decimal(0))
-        if total > 0:
-            df.loc[mask, "pct"] = df.loc[mask, "usd_value"].apply(
-                lambda v: (v / total * Decimal(100)) if v is not None else None
-            )
-
+    # (per-wallet percentage is no longer materialized here — it is derivable
+    # downstream as value_usd / total_value_usd, and computing it per wallet
+    # was a per-unique-wallet full-column scan)
     df = df.sort_values(["wallet", "usd_value"], ascending=[True, False], na_position="last").reset_index(drop=True)
     return df
 
@@ -697,32 +826,59 @@ def parallel_token_balance_aggregation(
     if not token_items:
         log("[batch] WARN no token files discovered")
     chunks = [token_items[i:i + cfg.token_chunk_size] for i in range(0, len(token_items), cfg.token_chunk_size)]
-    log(f"[batch] {len(token_items)} tokens in {len(chunks)} chunks")
+
+    # wallet batches arrive as contiguous sorted-address slices -> restrict
+    # every ledger scan to [lo, hi] so parquet row-group stats prune the rest
+    wallets_lc = sorted(w.lower() for w in wallets)
+    addr_range = (wallets_lc[0], wallets_lc[-1]) if (cfg.range_pruning and wallets_lc) else None
+    log(f"[batch] {len(token_items)} tokens in {len(chunks)} chunks | "
+        f"range={addr_range[0][:10]}..{addr_range[1][:10]}" if addr_range
+        else f"[batch] {len(token_items)} tokens in {len(chunks)} chunks | range pruning off")
+
+    snapshot_blocks_sorted = sorted(set(int(b) for b in snapshot_blocks))
+    wallets_df = pd.DataFrame({"wallet": wallets_lc})
 
     def process_token_chunk(chunk: List[Tuple[str, List[str]]]) -> List[pd.DataFrame]:
         out: List[pd.DataFrame] = []
-        con = duckdb.connect()
+        con = _borrow_connection(cfg)
+        wallet_rel = f"wallet_filter_{uuid.uuid4().hex}"
         try:
+            con.register(wallet_rel, wallets_df)
+            # one query for the whole chunk; tokens whose values overflow
+            # DECIMAL(38,0) fall back to the per-token python path
+            fallback_tokens: List[Tuple[str, List[str]]] = []
             try:
-                con.execute(f"SET threads={int(max(1, min(cfg.duckdb_threads, 8)))}")
-                con.execute(f"SET memory_limit='{cfg.duckdb_memory}'")
-            except Exception:
-                pass
-            for token, files in chunk:
+                df, bad = query_chunk_balances(
+                    chunk, wallet_rel, snapshot_blocks_sorted, con, addr_range)
+                if df is not None and not df.empty:
+                    out.append(df)
+                if bad:
+                    fallback_tokens = [(t, f) for t, f in chunk if t in bad]
+            except Exception as e:
+                log_exc(f"[batch] chunk query failed ({e}) — per-token fallback")
+                fallback_tokens = chunk
+            for token, files in fallback_tokens:
                 try:
-                    df = query_token_balances_optimized(token, files, wallets, snapshot_blocks, con)
+                    df = query_token_balances_optimized(
+                        token, files, wallets, snapshot_blocks, con,
+                        addr_range=addr_range)
                     if df is not None and not df.empty:
                         out.append(df)
                 except Exception as e:
                     log_exc(f"[batch] token {token} failed: {e}")
         finally:
-            con.close()
+            try:
+                con.unregister(wallet_rel)
+            except Exception:
+                pass
+            _return_connection(con)
         return out
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     all_results: List[pd.DataFrame] = []
-    with ThreadPoolExecutor(max_workers=min(4, len(chunks))) as ex:
+    n_threads = max(1, min(cfg.token_chunk_threads, len(chunks)))
+    with ThreadPoolExecutor(max_workers=n_threads) as ex:
         futs = [ex.submit(process_token_chunk, ch) for ch in chunks]
         for fut in as_completed(futs):
             try:
@@ -746,12 +902,15 @@ def parallel_token_balance_aggregation(
     combined_df = pd.concat(all_results, ignore_index=True)
 
     nested_results: Dict[int, Dict[str, Dict[str, int]]] = {b: {w: {} for w in wallets} for b in snapshot_blocks}
-    for _, row in combined_df.iterrows():
-        token = row["token_address"]
-        wallet = row["wallet"]
-        for b in snapshot_blocks:
-            bal = row.get(f"bal_{b}", 0)
-            if bal and int(bal) != 0:
+    bal_cols = [(b, f"bal_{b}") for b in snapshot_blocks
+                if f"bal_{b}" in combined_df.columns]
+    # itertuples is ~10x faster than iterrows on wide frames
+    cols = ["token_address", "wallet"] + [c for _, c in bal_cols]
+    for row in combined_df[cols].itertuples(index=False, name=None):
+        token, wallet = row[0], row[1]
+        for i, (b, _c) in enumerate(bal_cols):
+            bal = row[2 + i]
+            if bal is not None and int(bal) != 0:
                 nested_results[b][wallet][token] = int(bal)
 
     elapsed = time.perf_counter() - t_start
@@ -770,31 +929,18 @@ def parallel_token_balance_aggregation(
     }
 
 
-# ==== Timeout + split-aware scheduler =========================================
+# ==== Persistent worker pool =================================================
+#
+# Workers are spawned ONCE and pull batches from a queue for the whole run.
+# This keeps per-process caches warm across the ~hundreds of batches each
+# worker handles: DuckDB's parquet-footer object cache and the price-CSV
+# lru_cache. The previous process-per-batch design re-opened ~4.6k parquet
+# footers and re-parsed ~600 price CSVs for EVERY batch, hammering the GPFS
+# metadata server ~24x per minute — the observed all-workers-stall.
 
-@dataclass
-class Task:
-    """Container for a wallet batch task."""
-
-    task_id: int
-    wallets: List[str]
-
-
-def append_problem_wallets(filepath: str, worker_id: int, wallets: List[str], reason: str = "timeout") -> None:
-    """Append problematic wallets to a TSV file with a reason."""
-    path = pathlib.Path(filepath)
-    if path.parent and path.parent != pathlib.Path("."):
-        path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        for w in wallets:
-            f.write(f"{worker_id}\t{w}\t{reason}\n")
-
-
-def _spawn_worker(
-    task: Task,
-    *,
-    active: Dict[int, Tuple[mp.Process, float, Task]],
-    max_procs: int,
+def persistent_worker(
+    worker_id: int,
+    task_queue: Queue,
     snapshot_blocks: List[int],
     data_root: str,
     prices_dir: str,
@@ -808,137 +954,83 @@ def _spawn_worker(
     clean_drop_wallets: Set[str],
     clean_suspect_tokens: Set[str],
 ) -> None:
-    """Start a worker process for a Task and register it as active."""
-    p = mp.Process(
-        target=process_wallet_batch,
-        args=(
-            task.task_id,
-            task.wallets,
-            snapshot_blocks,
-            data_root,
-            prices_dir,
-            token_files,
-            cfg,
-            out_queue,
-            token_names,
-            decimals_map,
-            block_to_date_map,
-            cleaning_enabled,
-            clean_drop_wallets,
-            clean_suspect_tokens,
-        ),
-        daemon=False,
-    )
-    p.start()
-    active[task.task_id] = (p, time.perf_counter(), task)
-    log(f"[main] started worker {task.task_id} (batch_size={len(task.wallets)}) | active={len(active)}/{max_procs}")
-
-
-def _split_task(task: Task, next_id: int) -> Tuple[Task, Task, int]:
-    """Split a Task into two halves and return updated task ids."""
-    mid = max(1, len(task.wallets) // 2)
-    left = Task(next_id, task.wallets[:mid])
-    next_id += 1
-    right = Task(next_id, task.wallets[mid:])
-    next_id += 1
-    return left, right, next_id
-
-
-def run_with_timeouts_and_splits(
-    initial_batches: List[List[str]],
-    max_procs: int,
-    snapshot_blocks: List[int],
-    data_root: str,
-    prices_dir: str,
-    token_files: Dict[str, List[str]],
-    cfg: OptimizationConfig,
-    out_queue: Queue,
-    token_names: Dict[str, str],
-    decimals_map: Dict[str, int],
-    block_to_date_map: Dict[int, pd.Timestamp],
-    problem_wallets_path: str,
-    cleaning_enabled: bool,
-    clean_drop_wallets: Set[str],
-    clean_suspect_tokens: Set[str],
-    *,
-    worker_timeout_sec: int = WORKER_TIMEOUT_SEC,
-    min_batch_to_split: int = MIN_BATCH_TO_SPLIT,
-    sleep_poll_sec: float = SLEEP_POLL_SEC,
-) -> None:
-    """Supervise worker processes with timeouts and adaptive splitting."""
-    next_task_id = 1
-    pending: Deque[Task] = deque(Task(next_task_id + i, b) for i, b in enumerate(initial_batches))
-    next_task_id += len(initial_batches)
-
-    active: Dict[int, Tuple[mp.Process, float, Task]] = {}
-
-    def backfill() -> None:
-        while pending and len(active) < max_procs:
-            _spawn_worker(
-                pending.popleft(),
-                active=active,
-                max_procs=max_procs,
-                snapshot_blocks=snapshot_blocks,
-                data_root=data_root,
-                prices_dir=prices_dir,
-                token_files=token_files,
-                cfg=cfg,
-                out_queue=out_queue,
-                token_names=token_names,
-                decimals_map=decimals_map,
-                block_to_date_map=block_to_date_map,
-                cleaning_enabled=cleaning_enabled,
-                clean_drop_wallets=clean_drop_wallets,
-                clean_suspect_tokens=clean_suspect_tokens,
+    """Long-lived worker: loop over batch tasks until a None sentinel."""
+    done = 0
+    while True:
+        item = task_queue.get()
+        if item is None:
+            break
+        task_id, wallets = item
+        try:
+            process_wallet_batch(
+                task_id, wallets, snapshot_blocks, data_root, prices_dir,
+                token_files, cfg, out_queue, token_names, decimals_map,
+                block_to_date_map, cleaning_enabled, clean_drop_wallets,
+                clean_suspect_tokens,
             )
+        except Exception as e:
+            log_exc(f"[worker-proc {worker_id}] batch {task_id} failed: {e}")
+        done += 1
+    log(f"[worker-proc {worker_id}] exiting after {done} batches")
 
-    backfill()
 
-    while active or pending:
-        finished_any = False
+def run_persistent_pool(
+    batch_source: Iterable[List[str]],
+    max_procs: int,
+    snapshot_blocks: List[int],
+    data_root: str,
+    prices_dir: str,
+    token_files: Dict[str, List[str]],
+    cfg: OptimizationConfig,
+    out_queue: Queue,
+    token_names: Dict[str, str],
+    decimals_map: Dict[str, int],
+    block_to_date_map: Dict[int, pd.Timestamp],
+    cleaning_enabled: bool,
+    clean_drop_wallets: Set[str],
+    clean_suspect_tokens: Set[str],
+) -> None:
+    """Feed batches lazily to a fixed pool of persistent workers."""
+    task_queue: Queue = mp.Queue(maxsize=max_procs * 2)
+    procs: List[mp.Process] = []
+    for wid in range(max_procs):
+        p = mp.Process(
+            target=persistent_worker,
+            args=(wid, task_queue, snapshot_blocks, data_root, prices_dir,
+                  token_files, cfg, out_queue, token_names, decimals_map,
+                  block_to_date_map, cleaning_enabled, clean_drop_wallets,
+                  clean_suspect_tokens),
+            daemon=False,
+        )
+        p.start()
+        procs.append(p)
+    log(f"[main] started {max_procs} persistent workers")
 
-        for tid, (proc, _start_ts, _task) in list(active.items()):
-            if not proc.is_alive():
+    fed = 0
+    t0 = time.perf_counter()
+    try:
+        for task_id, wallets in enumerate(batch_source, 1):
+            while True:
+                if not any(p.is_alive() for p in procs):
+                    raise RuntimeError("all workers died — aborting feed")
                 try:
-                    proc.join()
+                    task_queue.put((task_id, wallets), timeout=30)
+                    break
                 except Exception:
-                    pass
-                active.pop(tid, None)
-                log(f"[main] worker finished | id={tid} | active={len(active)}/{max_procs}")
-                finished_any = True
-
-        now = time.perf_counter()
-        for tid, (proc, start_ts, task) in list(active.items()):
-            if now - start_ts > worker_timeout_sec:
-                log(
-                    f"[main] TIMEOUT | id={tid} | size={len(task.wallets)} | limit={worker_timeout_sec}s — terminating"
-                )
-                try:
-                    proc.terminate()
-                    proc.join(timeout=5)
-                except Exception:
-                    pass
-                active.pop(tid, None)
-
-                if len(task.wallets) <= min_batch_to_split:
-                    append_problem_wallets(problem_wallets_path, tid, task.wallets, reason="timeout_min_batch")
-                    log(f"[main] recorded {len(task.wallets)} problem wallets from worker {tid} → {problem_wallets_path}")
-                else:
-                    left, right, next_task_id = _split_task(task, next_task_id)
-                    pending.appendleft(right)
-                    pending.appendleft(left)
-                    log(
-                        f"[main] split worker {tid} → new tasks {left.task_id} ({len(left.wallets)}) "
-                        f"+ {right.task_id} ({len(right.wallets)})"
-                    )
-
-                finished_any = True
-
-        if finished_any or (pending and len(active) < max_procs):
-            backfill()
-
-        if not finished_any:
-            time.sleep(sleep_poll_sec)
+                    continue  # queue full — workers busy; retry
+            fed += 1
+            if fed % 50 == 0:
+                rate = fed / max(1e-9, time.perf_counter() - t0)
+                log(f"[main] fed {fed} batches | ~{rate * 3600:.0f} batches/h")
+    finally:
+        for _ in procs:
+            try:
+                task_queue.put(None)
+            except Exception:
+                pass
+        for p in procs:
+            p.join()
+        log(f"[main] pool drained | batches fed={fed}")
 
 
 # ======================= Writer Process (single) =======================
@@ -962,7 +1054,7 @@ def writer_process(out_path: str, q: Queue, stop_event: Event) -> None:
             df = df[["wallet_address", "block_number", "total_value_usd", "num_tokens", "holdings"]].copy()
             table = pa.Table.from_pandas(df, schema=OUTPUT_SCHEMA, preserve_index=False)
             if writer is None:
-                writer = pq.ParquetWriter(str(out_file), OUTPUT_SCHEMA, compression="snappy")
+                writer = pq.ParquetWriter(str(out_file), OUTPUT_SCHEMA, compression="zstd")
             writer.write_table(table)
             total_rows += len(df)
     except Exception as e:
@@ -986,17 +1078,17 @@ def _filter_positions_for_wallet(
 ) -> List[Dict[str, Any]]:
     """Filter and normalize token positions for a single wallet snapshot."""
     positions: List[Dict[str, Any]] = []
-    for _, r in wallet_df.iterrows():
-        bal_dec = r["balance"]
+    for tok_addr, bal_dec, usd_value in wallet_df[
+        ["token_address", "balance", "usd_value"]
+    ].itertuples(index=False, name=None):
         bal_str = dec_to_str(bal_dec)
-        tok = r["token_address"].lower()
         if cleaning_enabled:
-            if tok in clean_suspect_tokens or _is_impossible_balance_str(bal_str):
+            if tok_addr.lower() in clean_suspect_tokens or _is_impossible_balance_str(bal_str):
                 continue
         positions.append({
-            "token_address": r["token_address"],
+            "token_address": tok_addr,
             "balance": bal_str,
-            "value_usd": r["usd_value"],
+            "value_usd": usd_value,
         })
     return positions
 
@@ -1074,23 +1166,16 @@ def process_wallet_batch(
                     sum(1 for p in positions if _to_dec_safe(p.get("balance")) and _to_dec_safe(p.get("balance")) > 0)
                 )
 
-                if total_dec > 0:
-                    for p in positions:
-                        v = p["value_usd"]
-                        pct = (v / total_dec * Decimal(100)) if (v is not None and v > 0) else Decimal(0)
-                        p["percentage"] = dec_to_str(pct)
-                else:
-                    for p in positions:
-                        p["percentage"] = dec_to_str(Decimal(0))
-
-                holdings: List[Dict[str, Any]] = []
-                for p in positions:
-                    holdings.append({
+                # nested holdings column (list<struct>); percentage is
+                # derivable (value_usd / total_value_usd) and not stored
+                holdings: List[Dict[str, Any]] = [
+                    {
                         "token_address": p["token_address"],
                         "balance": p["balance"],
-                        "value_usd": dec_to_str(p["value_usd"]),
-                        "percentage": p["percentage"],
-                    })
+                        "value_usd": float(p["value_usd"]) if p["value_usd"] is not None else None,
+                    }
+                    for p in positions
+                ]
 
                 if cleaning_enabled and not holdings:
                     continue
@@ -1100,7 +1185,7 @@ def process_wallet_batch(
                     "block_number": int(block),
                     "total_value_usd": dec_to_str(total_dec),
                     "num_tokens": num_tokens,
-                    "holdings": json.dumps(holdings, ensure_ascii=False),
+                    "holdings": holdings,
                 })
 
             if len(final_rows) >= 50_000:
@@ -1140,32 +1225,46 @@ def make_batch_size_generator(
         yield max(min(int(random.uniform(lo, hi)), max_size), min_size)
 
 
-def stream_wallet_batches_dynamic(
+def stream_wallet_batches_sorted(
     parquet_path: str,
     column: str,
-    base_batch_size: int,
     size_iter: Iterable[int],
-    arrow_batch_rows: int = 1_000_000,
+    sort_mem: str = "16GB",
+    sort_threads: int = 8,
     progress_every: int = 5_000_000,
 ) -> Iterator[List[str]]:
-    """Stream wallet addresses from Parquet and yield dynamic-sized batches."""
-    dataset = ds.dataset(parquet_path, format="parquet")
-    schema = dataset.schema
-    if column not in schema.names:
-        raise ValueError(f"[wallets] column '{column}' not found. Available: {schema.names}")
+    """Stream DISTINCT wallet addresses in SORTED order as dynamic batches.
 
-    scanner = ds.Scanner.from_dataset(dataset, columns=[column], batch_size=arrow_batch_rows)
+    Sorted streaming means every batch is a contiguous address range, which
+    is what makes per-batch range pruning of the (address-sorted) ledger
+    files possible. The sort runs out-of-core in DuckDB; each wallet lands
+    in exactly one batch (DISTINCT + contiguous ranges never overlap).
+    """
+    p = pathlib.Path(parquet_path)
+    src = f"{parquet_path}/**/*.parquet" if p.is_dir() else str(parquet_path)
+    con = duckdb.connect()
+    con.execute(f"SET threads={max(1, sort_threads)}")
+    con.execute(f"SET memory_limit='{sort_mem}'")
+    con.execute("SET preserve_insertion_order=false")
+    log(f"[wallets] sorted-distinct streaming of column='{column}' "
+        f"(external sort, mem={sort_mem})")
+    reader = con.execute(f"""
+        SELECT DISTINCT lower(CAST({column} AS VARCHAR)) AS a
+        FROM read_parquet('{src}')
+        WHERE {column} IS NOT NULL
+        ORDER BY a
+    """).fetch_record_batch(250_000)
 
     batch: List[str] = []
     seen = 0
     yielded = 0
     size_iter = iter(size_iter)
     target = next(size_iter)
-
-    log(f"[wallets] streaming column='{column}' base_batch={base_batch_size} (dynamic sizes)")
-
-    reader = scanner.to_reader()
-    for rb in reader:
+    while True:
+        try:
+            rb = reader.read_next_batch()
+        except StopIteration:
+            break
         values = rb.column(0).to_pylist()
         for v in values:
             addr = normalize_eth_address(str(v))
@@ -1179,12 +1278,13 @@ def stream_wallet_batches_dynamic(
                 target = next(size_iter)
         seen += len(values)
         if progress_every and seen // progress_every > (seen - len(values)) // progress_every:
-            log(f"[wallets] scanned ~{seen:,} rows | yielded={yielded} batches")
+            log(f"[wallets] streamed ~{seen:,} sorted rows | yielded={yielded} batches")
 
     if batch:
         yield batch
         yielded += 1
-    log(f"[wallets] done streaming | total_rows≈{seen:,} | total_batches={yielded}")
+    con.close()
+    log(f"[wallets] done streaming | distinct_rows≈{seen:,} | total_batches={yielded}")
 
 
 def estimate_parquet_rows(parquet_path: str) -> int:
@@ -1227,25 +1327,14 @@ def build_dates_list() -> List[str]:
     """Return snapshot dates (monthly starts plus curated event neighbors)."""
     dates: List[str] = []
 
-    start = pd.Timestamp("2023-03-01")
-    end = pd.Timestamp("2025-03-01")
+    start = pd.Timestamp("2020-01-01")
+    end = pd.Timestamp("2022-01-01")
     cur = start
     while cur <= end:
         dates.append(cur.strftime("%Y-%m-%d"))
         cur = (cur + pd.offsets.MonthBegin(1))
 
-    key_dates = [
-        ("2023-03-11", "2023-03-12", "2023-03-13"),
-        ("2023-04-11", "2023-04-12", "2023-04-13"),
-        ("2023-06-14", "2023-06-15", "2023-06-16"),
-        ("2023-10-15", "2023-10-16", "2023-10-17"),
-        ("2024-01-09", "2024-01-10", "2024-01-11"),
-        ("2024-03-12", "2024-03-13", "2024-03-14"),
-        ("2024-03-13", "2024-03-14", "2024-03-15"),
-        ("2024-04-19", "2024-04-20", "2024-04-21"),
-        ("2024-05-22", "2024-05-23", "2024-05-24"),
-        ("2024-07-22", "2024-07-23", "2024-07-24"),
-    ]
+    key_dates = []
 
     neighbors = [d for (d_minus, _d, d_plus) in key_dates for d in (d_minus, d_plus)]
     seen = set()
@@ -1357,17 +1446,17 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--duckdb-threads", type=int, default=2, help="DuckDB threads per worker (default: 2)")
     p.add_argument("--duckdb-mem", default="2GB", help="DuckDB memory per worker (default: 2GB)")
     p.add_argument("--token-chunk-size", type=int, default=64, help="Tokens per chunk inside a worker (default: 64)")
+    p.add_argument("--token-chunk-threads", type=int, default=2,
+                   help="Concurrent chunk threads per worker, each with one DuckDB "
+                        "connection capped at --duckdb-mem (default: 2)")
+    p.add_argument("--stream-sort-mem", default="16GB",
+                   help="DuckDB memory for the one-time sorted wallet stream (default: 16GB)")
+    p.add_argument("--no-range-pruning", action="store_true",
+                   help="Disable per-batch address-range predicates on ledger scans "
+                        "(only needed if token files are NOT lowercase-address-sorted)")
     p.add_argument("--max-tokens", type=int, default=None, help="Limit number of tokens (debug)")
     p.add_argument("--max-batches", type=int, default=None, help="Limit number of wallet batches (debug)")
     p.add_argument("--no-forward-fill", action="store_true", help="Disable price forward fill")
-    p.add_argument(
-        "--problem-wallets",
-        default=None,
-        help=(
-            "File to append problematic wallet addresses that still time out after max splits. "
-            "Default: <output>.problem_wallets.txt"
-        ),
-    )
     p.add_argument(
         "--skip-clean-overflows",
         action="store_true",
@@ -1414,8 +1503,6 @@ def main() -> int:
     log("------------------------------------------")
 
     _validate_inputs(args)
-
-    problem_wallets_path = args.problem_wallets or (args.output + ".problem_wallets.txt")
 
     clean_drop_wallets = _load_clean_drop_wallets(args, cleaning_enabled)
     clean_suspect_tokens = _load_clean_suspects(args, cleaning_enabled)
@@ -1470,18 +1557,17 @@ def main() -> int:
         duckdb_threads=max(1, args.duckdb_threads),
         duckdb_memory=args.duckdb_mem,
         forward_fill_price=not args.no_forward_fill,
+        token_chunk_threads=max(1, args.token_chunk_threads),
+        range_pruning=not args.no_range_pruning,
     )
 
-    from multiprocessing import Manager
-
-    manager = Manager()
-    q: Queue = manager.Queue(maxsize=8)
-    stop_event = manager.Event()
+    q: Queue = mp.Queue(maxsize=16)
+    stop_event = mp.Event()
     writer = Process(target=writer_process, args=(raw_output_path, q, stop_event), daemon=False)
     writer.start()
 
     t_all = time.perf_counter()
-    batch_idx = 0
+    batch_counter = {"n": 0}
     try:
         delta = 10_000
         size_iter = make_batch_size_generator(
@@ -1491,36 +1577,28 @@ def main() -> int:
             max_size=(args.batch_size + delta),
         )
 
-        initial_batches: List[List[str]] = []
-        for wallets in stream_wallet_batches_dynamic(
+        # Lazy scheduling over SORTED batches: pulled as worker slots free up
+        # (full wallet list never held in memory), and each batch is a
+        # contiguous address range enabling ledger range pruning.
+        raw_source = stream_wallet_batches_sorted(
             args.input_wallets_parquet,
             args.wallets_column,
-            args.batch_size,
             size_iter,
-            arrow_batch_rows=250_000,
+            sort_mem=args.stream_sort_mem,
+            sort_threads=max(4, min(16, args.processes)),
             progress_every=2_000_000,
-        ):
-            batch_idx += 1
-            initial_batches.append(wallets)
+        )
 
-            if args.max_batches and batch_idx >= args.max_batches:
-                log(f"[main] reached max_batches={args.max_batches} (debug mode)")
-                break
+        def counted_batches() -> Iterator[List[str]]:
+            for wallets in raw_source:
+                batch_counter["n"] += 1
+                yield wallets
+                if args.max_batches and batch_counter["n"] >= args.max_batches:
+                    log(f"[main] reached max_batches={args.max_batches} (debug mode)")
+                    return
 
-        log(f"[main] prepared {len(initial_batches)} initial batches for scheduling")
-
-        worker_timeout_sec = getattr(args, "worker_timeout_sec", WORKER_TIMEOUT_SEC)
-        min_batch_to_split = getattr(args, "min_batch_to_split", MIN_BATCH_TO_SPLIT)
-
-        try:
-            global WORKER_TIMEOUT_SEC, MIN_BATCH_TO_SPLIT
-            WORKER_TIMEOUT_SEC = worker_timeout_sec
-            MIN_BATCH_TO_SPLIT = min_batch_to_split
-        except NameError:
-            pass
-
-        run_with_timeouts_and_splits(
-            initial_batches=initial_batches,
+        run_persistent_pool(
+            batch_source=counted_batches(),
             max_procs=cfg.processes,
             snapshot_blocks=snapshot_blocks,
             data_root=args.data_root,
@@ -1534,9 +1612,6 @@ def main() -> int:
             cleaning_enabled=cleaning_enabled,
             clean_drop_wallets=clean_drop_wallets,
             clean_suspect_tokens=clean_suspect_tokens,
-            worker_timeout_sec=worker_timeout_sec,
-            min_batch_to_split=min_batch_to_split,
-            problem_wallets_path=problem_wallets_path,
         )
 
     except KeyboardInterrupt:
@@ -1545,7 +1620,7 @@ def main() -> int:
         stop_event.set()
         writer.join()
         elapsed_all = time.perf_counter() - t_all
-        log(f"[main] all done in {elapsed_all:.2f}s | batches_prepared={batch_idx}")
+        log(f"[main] all done in {elapsed_all:.2f}s | batches_scheduled={batch_counter['n']}")
 
     return 0
 
