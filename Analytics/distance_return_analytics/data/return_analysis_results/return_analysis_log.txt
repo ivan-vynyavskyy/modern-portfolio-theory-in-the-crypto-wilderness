@@ -1,0 +1,1089 @@
+[13:15:40] ======================================================================
+[13:15:40] MPT RETURN ANALYSIS — FULL SCALE
+[13:15:40] ======================================================================
+[13:15:40] Input:    /path/to/mpt-optimization-results-eth/wallet_level
+[13:15:40] Output:   /path/to/mpt-optimization-results-eth/return_analysis_results
+[13:15:40] Temp dir: /path/to/duckdb_tmp  (threads=32, memory_limit=100GB)
+
+[13:15:43] Total rows: 817,525,786
+
+[13:15:43] ======================================================================
+[13:15:43] SECTION 2: Full-data Pearson Correlation — returns vs features
+[13:15:43] ======================================================================
+[13:15:43]   Computing Pearson on full data via DuckDB ...
+[13:16:17]   Done in 34.6s
+[13:16:17] Pearson r — features vs returns (full data):
+               baseline  better_return  safer_risk  max_sharpe  equal_weight  mcap_weight  market
+feature                                                                                          
+month           -0.0000        -0.0010     -0.0010     -0.0010       -0.0011      -0.0027 -0.0613
+log_value_usd   -0.0001         0.0002      0.0000      0.0001        0.0002      -0.0022 -0.0487
+num_tokens      -0.0000        -0.0001     -0.0002     -0.0001        0.0001       0.0004 -0.0050
+
+[13:16:17]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/pearson_returns_full_data.csv
+[13:16:17] 
+  2b. Pearson correlation — features vs binary win/lose (full data) ...
+[13:16:49]   Done in 32.0s
+[13:16:49] Pearson r — features vs P(win) where win = ret > 0 (full data):
+               baseline  better_return  safer_risk  max_sharpe  equal_weight  mcap_weight
+feature                                                                                  
+month           -0.1097        -0.1038     -0.1049     -0.0924       -0.1166      -0.1298
+log_value_usd   -0.0183        -0.0291     -0.0208     -0.0349       -0.0290      -0.0091
+num_tokens      -0.0221        -0.0228     -0.0197     -0.0255       -0.0215      -0.0178
+
+[13:16:49]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/pearson_win_lose_full_data.csv
+[13:16:49] ======================================================================
+[13:16:49] SECTION 3: Large-sample correlation (50M rows) — Pearson + Spearman
+[13:16:49] ======================================================================
+[13:16:49]   Drawing 50M sample ...
+[13:26:51]   Sample loaded: 50,000,000 rows in 601.9s
+[13:32:55] Pearson r (sample 50M):
+target         baseline  better_return  equal_weight  market  max_sharpe  mcap_weight  safer_risk
+feature                                                                                          
+log_value_usd   -0.0038        -0.0000        0.0000  0.0330     -0.0000      -0.0022     -0.0000
+month           -0.0048         0.0001        0.0001 -0.1076      0.0001      -0.0115      0.0001
+num_tokens       0.0002        -0.0001       -0.0000 -0.0051     -0.0001      -0.0001     -0.0001
+
+[13:32:55] Spearman ρ (sample 50M):
+target         baseline  better_return  equal_weight  market  max_sharpe  mcap_weight  safer_risk
+feature                                                                                          
+log_value_usd   -0.0007        -0.0056        0.0148  0.0211      0.0265       0.0183      0.0035
+month            0.2658         0.2611        0.2578  0.4051      0.2612       0.3436      0.2713
+num_tokens       0.0220         0.0214        0.0364 -0.0023      0.0382       0.0019      0.0202
+
+[13:32:55]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/correlation_returns_sample.csv
+[13:32:55] 
+  3b. Binary win/lose correlation (sample 50M) ...
+[13:35:34] Pearson r — features vs P(win) (sample 50M):
+target         baseline  better_return  equal_weight  max_sharpe  mcap_weight  safer_risk
+feature                                                                                  
+log_value_usd    0.0210        -0.0293       -0.0208     -0.0283       0.0050     -0.0017
+month           -0.1388        -0.1397       -0.1529     -0.1462      -0.1579     -0.1348
+num_tokens      -0.0133        -0.0198       -0.0084     -0.0184      -0.0158      0.0017
+
+[13:35:34] Spearman ρ — features vs P(win) (sample 50M):
+target         baseline  better_return  equal_weight  max_sharpe  mcap_weight  safer_risk
+feature                                                                                  
+log_value_usd    0.0155        -0.0362       -0.0304     -0.0381       0.0000     -0.0098
+month            0.1758         0.1706        0.1577      0.1642       0.2075      0.1746
+num_tokens      -0.0098        -0.0293       -0.0114     -0.0196      -0.0136      0.0113
+
+[13:35:34]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/correlation_win_lose_sample.csv
+[13:35:34] ======================================================================
+[13:35:34] SECTION 4: Return Distribution (full data)
+[13:35:34] ======================================================================
+[13:35:34]   4a. Descriptive statistics ...
+[13:37:42]   Done in 127.7s
+[13:37:42] Return descriptive statistics (full data):
+                       mean           std     min     p05     p25  median     p75     p95           max  positive_pct  zero_pct  negative_pct          n
+portfolio                                                                                                                                               
+baseline       1.750269e+03  4.988080e+07 -1.0000 -0.2866 -0.1027 -0.0047  0.0838  0.4165  1.421593e+12         45.84       0.0         54.16  812238501
+better_return  2.720309e+29  3.435745e+32 -1.0000 -0.2783 -0.1044 -0.0102  0.0834  0.4284  1.184642e+36         45.26       0.0         54.74  812869790
+safer_risk     6.486689e+29  8.511411e+32 -1.0000 -0.2749 -0.0990 -0.0085  0.0803  0.4160  1.184642e+36         45.66       0.0         54.34  812754947
+max_sharpe     3.713604e+29  4.692989e+32 -1.0000 -0.2822 -0.0995 -0.0068  0.0785  0.4141  2.132356e+36         46.38       0.0         53.62  812995662
+equal_weight   8.302714e+29  9.280234e+32 -1.0000 -0.2567 -0.1069 -0.0182  0.0814  0.4119  1.184642e+36         45.09       0.0         54.91  812238501
+mcap_weight    4.557000e-02  6.305621e+00 -1.0000 -0.2552 -0.0821 -0.0029  0.0904  0.4044  5.086202e+04         49.48       0.0         50.52  811177379
+market         2.907000e-02  1.698750e-01 -0.3848 -0.2382 -0.0582 -0.0043  0.0862  0.3191  5.719000e-01         49.85       0.0         50.15  817525786
+
+[13:37:42]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/return_descriptive_stats.csv
+[13:37:42]   4b. Return bucket distribution ...
+[13:38:09]   Bucket query done in 27.6s
+[13:38:09] Return distribution (% of wallets per bucket):
+portfolio     baseline  better_return  equal_weight  market  max_sharpe  mcap_weight  safer_risk
+bucket                                                                                          
+< -50%            0.40           0.34          0.08    0.00        0.45         0.04        0.29
+[-50%, -20%)     11.33          10.89          9.63    6.93       10.65         8.71       10.39
+[-20%, -5%)      24.93          26.47         28.69   23.00       25.12        25.24       25.81
+[-5%, 0%)        17.49          17.04         16.52   20.21       17.40        16.54       17.84
+[0%, 5%)         16.05          14.92         14.23   15.89       17.85        16.27       15.50
+[5%, 20%)        14.93          15.72         16.12   17.30       15.41        16.75       15.54
+[20%, 50%)       11.60          11.62         11.25   15.23       10.75        14.33       11.75
+≥ 50%             3.26           3.00          3.48    1.43        2.37         2.12        2.88
+
+[13:38:09] Return distribution (count per bucket):
+portfolio      baseline  better_return  equal_weight     market  max_sharpe  mcap_weight  safer_risk
+bucket                                                                                              
+< -50%          3268298        2772558        630128          0     3653404       289690     2384473
+[-50%, -20%)   92035276       88539099      78186133   56672569    86546699     70641940    84474559
+[-20%, -5%)   202528550      215182685     233041335  188065388   204263323    204739600   209765050
+[-5%, 0%)     142073896      138474203     134174581  165210578   141460568    134136283   144997366
+[0%, 5%)      130400572      121303982     115600000  129904658   145126984    132000844   125942836
+[5%, 20%)     121228790      127764554     130916834  141418550   125305343    135901218   126326036
+[20%, 50%)     94197963       94453804      91414171  124547213    87403432    116269724    95476776
+≥ 50%          26505156       24378905      28275319   11706830    19235909     17198080    23387851
+
+[13:38:09]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/return_distribution_pct.csv
+[13:38:09]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/return_distribution_count.csv
+[13:38:09] ======================================================================
+[13:38:09] SECTION 5: Baseline vs Optimised Return Comparison (full data)
+[13:38:09] ======================================================================
+[13:38:09]   5a. Win rates — strategy beats baseline ...
+[13:39:27]   Done in 77.5s
+[13:39:27] Strategy vs Baseline — win/tie/loss rates + return differences:
+               win_pct  tie_pct  loss_pct  mean_diff_vs_baseline  median_diff_vs_baseline
+strategy                                                                                 
+better_return    41.19    16.50     42.31           2.722423e+29                 0.000000
+safer_risk       41.62    17.59     40.79           6.490813e+29                 0.000000
+max_sharpe       49.14     0.00     50.86           3.717066e+29                -0.000343
+equal_weight     48.67     0.00     51.33           8.302714e+29                -0.000940
+mcap_weight      57.12     0.00     42.87          -1.752513e+03                 0.000954
+
+[13:39:27]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/strategy_vs_baseline_win_rates.csv
+[13:39:27] ======================================================================
+[13:39:27] SECTION 6: Median returns per L1-distance bucket
+[13:39:27] ======================================================================
+[13:39:27] 
+--- BETTER_RETURN distance buckets ---
+[13:41:12]   Median returns per distance bucket (better_return):
+                     n  median_baseline  median_better_return  median_safer_risk  median_max_sharpe  median_equal_weight  median_mcap_weight  median_market
+dist_bucket                                                                                                                                                
+0_exact       47262008        -0.010073             -0.014969          -0.014969          -0.006751            -0.018894           -0.004701      -0.010476
+(0,1]        522958566        -0.004671             -0.008015          -0.007937          -0.005559            -0.017863           -0.003773      -0.004313
+(1,20]        76049141        -0.001102             -0.005521          -0.001537          -0.006589            -0.014869            0.000784       0.023857
+(20,40]       53836149        -0.011092             -0.009535          -0.011673          -0.008090            -0.018656            0.000702       0.015002
+(40,60]       47214540        -0.002109             -0.018878          -0.007598          -0.015402            -0.015923            0.006682       0.028130
+(60,80]       41491547        -0.016241             -0.028427          -0.016736          -0.021176            -0.023041           -0.003503       0.004888
+(80,100]      28713739        -0.030225             -0.034255          -0.022075          -0.029134            -0.028482           -0.005001      -0.011721
+NaN                 96        -0.037971             -0.076295          -0.054758          -0.066768            -0.047691            0.006947      -0.011099
+
+[13:41:12]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/returns_by_distance_bucket_better_return.csv
+[13:41:12] 
+--- SAFER_RISK distance buckets ---
+[13:42:54]   Median returns per distance bucket (safer_risk):
+                     n  median_baseline  median_better_return  median_safer_risk  median_max_sharpe  median_equal_weight  median_mcap_weight  median_market
+dist_bucket                                                                                                                                                
+0_exact       37399929        -0.004501             -0.008134          -0.009612          -0.004849            -0.014557           -0.003773       0.004888
+(0,1]        603776426        -0.003687             -0.007005          -0.006927          -0.005559            -0.015645           -0.000466      -0.004313
+(1,20]        60739297        -0.011448             -0.016223          -0.013311          -0.013460            -0.021454           -0.003356       0.004888
+(20,40]       45876874        -0.014131             -0.020241          -0.015467          -0.018630            -0.023602           -0.003356       0.004888
+(40,60]       37652760        -0.018827             -0.025988          -0.012729          -0.019602            -0.023740           -0.004260      -0.004313
+(60,80]       22102420        -0.041968             -0.044865          -0.022741          -0.033885            -0.038639           -0.012414      -0.011721
+(80,100]       9978073        -0.051453             -0.053998          -0.017123          -0.030999            -0.041029           -0.026852      -0.027655
+NaN                  7        -0.075223             -0.093035          -0.050035          -0.049605            -0.090374           -0.059514      -0.049861
+
+[13:42:54]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/returns_by_distance_bucket_safer_risk.csv
+[13:42:54] 
+--- MAX_SHARPE distance buckets ---
+[13:44:20]   Median returns per distance bucket (max_sharpe):
+                     n  median_baseline  median_better_return  median_safer_risk  median_max_sharpe  median_equal_weight  median_mcap_weight  median_market
+dist_bucket                                                                                                                                                
+0_exact        6471039        -0.026902             -0.024470          -0.024470          -0.024470            -0.029949           -0.024967      -0.011721
+(0,1]        139500943        -0.024471             -0.023432          -0.023090          -0.023950            -0.020370           -0.007974      -0.011721
+(1,20]       137183883        -0.000095             -0.003283          -0.002442          -0.004083            -0.014116            0.007348       0.023857
+(20,40]      105632044         0.000127             -0.001997          -0.000542           0.000366            -0.004585            0.011912       0.035547
+(40,60]      105909244        -0.006107             -0.012856          -0.005862          -0.000470            -0.007524            0.008221       0.032567
+(60,80]      224379481        -0.007752             -0.014383          -0.013758          -0.008359            -0.019757           -0.004841      -0.010476
+(80,100]      98449021        -0.022766             -0.028654          -0.023651          -0.031212            -0.029949           -0.007170      -0.011721
+NaN                131        -0.043811             -0.054244          -0.035773          -0.069442            -0.029292           -0.038514      -0.011721
+
+[13:44:20]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/returns_by_distance_bucket_max_sharpe.csv
+[13:44:20] ======================================================================
+[13:44:20] SECTION 7: Regression models — returns as targets
+[13:44:20] ======================================================================
+[13:44:20]   Drawing 10M sample for regression ...
+[13:47:01]   Regression sample: 10,000,000 rows in 161.6s
+[13:47:02]   Winsorising return & alpha columns at p5/p95 ...
+[13:47:02]     ret_pct_baseline: clipped to [-22.9707, 40.0115]
+[13:47:02]     ret_pct_better_return: clipped to [-21.4674, 40.5189]
+[13:47:03]     ret_pct_safer_risk: clipped to [-20.8713, 38.0538]
+[13:47:03]     ret_pct_max_sharpe: clipped to [-20.2226, 36.3826]
+[13:47:03]     ret_pct_equal_weight: clipped to [-20.1568, 41.1910]
+[13:47:04]     ret_pct_mcap_weight: clipped to [-17.3376, 33.0474]
+[13:47:04]     alpha_baseline: clipped to [-0.2075, 0.2455]
+[13:47:04]     alpha_better_return: clipped to [-0.2005, 0.2843]
+[13:47:05]     alpha_safer_risk: clipped to [-0.1950, 0.2504]
+[13:47:05]     alpha_max_sharpe: clipped to [-0.1521, 0.2219]
+[13:47:06]     alpha_equal_weight: clipped to [-0.1570, 0.3236]
+[13:47:06]     alpha_mcap_weight: clipped to [-0.0707, 0.1060]
+[13:47:06]   Winsorisation done (rows unchanged: 10,000,000)
+[13:47:06] 
+  --- 7a. OLS Regression ---
+[13:47:09] 
+  OLS: ret_baseline (%)
+[13:47:09]   R² = 0.0106,  Adj-R² = 0.0106,  N = 9,966,225
+[13:47:09]   Coefficients (ret_baseline %):
+                   coef   std_err      t_stat  p_value significant
+const          3.327365  0.011392  292.076745      0.0         ***
+month         -0.060257  0.000210 -287.238386      0.0         ***
+log_value_usd -0.212262  0.001896 -111.925705      0.0         ***
+num_tokens     0.411160  0.003503  117.376377      0.0         ***
+
+[13:47:09]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_coefs_baseline.csv
+[13:47:10] 
+  OLS: ret_better_return (%)
+[13:47:10]   R² = 0.0161,  Adj-R² = 0.0161,  N = 9,969,999
+[13:47:10]   Coefficients (ret_better_return %):
+                   coef   std_err      t_stat  p_value significant
+const          4.104779  0.011231  365.470489      0.0         ***
+month         -0.080192  0.000209 -383.078492      0.0         ***
+log_value_usd -0.124884  0.001890  -66.072214      0.0         ***
+num_tokens     0.416865  0.003372  123.635777      0.0         ***
+
+[13:47:10]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_coefs_better_return.csv
+[13:47:12] 
+  OLS: ret_safer_risk (%)
+[13:47:12]   R² = 0.0146,  Adj-R² = 0.0146,  N = 9,969,307
+[13:47:12]   Coefficients (ret_safer_risk %):
+                   coef   std_err      t_stat  p_value significant
+const          3.335755  0.010845  307.575469      0.0         ***
+month         -0.067922  0.000200 -339.188771      0.0         ***
+log_value_usd -0.182456  0.001810 -100.800751      0.0         ***
+num_tokens     0.563249  0.003318  169.739836      0.0         ***
+
+[13:47:12]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_coefs_safer_risk.csv
+[13:47:14] 
+  OLS: ret_max_sharpe (%)
+[13:47:14]   R² = 0.0184,  Adj-R² = 0.0184,  N = 9,970,600
+[13:47:14]   Coefficients (ret_max_sharpe %):
+                   coef   std_err      t_stat  p_value significant
+const          3.490987  0.009823  355.397008      0.0         ***
+month         -0.072290  0.000182 -396.768983      0.0         ***
+log_value_usd -0.159386  0.001646  -96.814497      0.0         ***
+num_tokens     0.484569  0.002981  162.564919      0.0         ***
+
+[13:47:14]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_coefs_max_sharpe.csv
+[13:47:16] 
+  OLS: ret_equal_weight (%)
+[13:47:16]   R² = 0.0239,  Adj-R² = 0.0239,  N = 9,966,225
+[13:47:16]   Coefficients (ret_equal_weight %):
+                   coef   std_err      t_stat  p_value significant
+const          4.217216  0.010992  383.667649      0.0         ***
+month         -0.086051  0.000202 -425.128466      0.0         ***
+log_value_usd -0.291467  0.001830 -159.286588      0.0         ***
+num_tokens     0.753375  0.003380  222.902116      0.0         ***
+
+[13:47:16]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_coefs_equal_weight.csv
+[13:47:18] 
+  OLS: ret_mcap_weight (%)
+[13:47:18]   R² = 0.0006,  Adj-R² = 0.0006,  N = 9,959,360
+[13:47:18]   Coefficients (ret_mcap_weight %):
+                   coef   std_err      t_stat   p_value significant
+const          1.643927  0.009064  181.370891  0.000000         ***
+month          0.000684  0.000166    4.117893  0.000038         ***
+log_value_usd -0.103185  0.001501  -68.745969  0.000000         ***
+num_tokens     0.128505  0.002818   45.596911  0.000000         ***
+
+[13:47:18]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_coefs_mcap_weight.csv
+[13:47:18] 
+  OLS Summary (returns):
+                   R2  Adj_R2    F_stat  F_pvalue
+target                                           
+baseline       0.0106  0.0106  35581.05       0.0
+better_return  0.0161  0.0161  54441.12       0.0
+safer_risk     0.0146  0.0146  49070.38       0.0
+max_sharpe     0.0184  0.0184  62439.13       0.0
+equal_weight   0.0239  0.0239  81451.60       0.0
+mcap_weight    0.0006  0.0006   1895.45       0.0
+
+[13:47:18]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_summary.csv
+[13:47:18] 
+  --- 7b. Quantile Regression ---
+[13:47:19]   Quantile regression on 2M rows
+[13:47:19]   QuantReg: ret_baseline, q=0.25 ...
+[13:47:31]   QuantReg coefficients (ret_baseline, q=0.25):
+                   coef   std_err      t_stat  p_value  quantile    target significant
+Intercept     -4.777791  0.008153 -586.015661      0.0      0.25  baseline         ***
+month         -0.108788  0.000145 -748.112280      0.0      0.25  baseline         ***
+log_value_usd  0.121231  0.001375   88.185920      0.0      0.25  baseline         ***
+num_tokens    -0.137671  0.002403  -57.297540      0.0      0.25  baseline         ***
+
+[13:47:31]   QuantReg: ret_baseline, q=0.50 ...
+[13:47:46]   QuantReg coefficients (ret_baseline, q=0.5):
+                   coef   std_err      t_stat  p_value  quantile    target significant
+Intercept      0.808481  0.009841   82.153639      0.0       0.5  baseline         ***
+month         -0.029698  0.000180 -165.049099      0.0       0.5  baseline         ***
+log_value_usd -0.231706  0.001628 -142.357899      0.0       0.5  baseline         ***
+num_tokens     0.350161  0.003062  114.345514      0.0       0.5  baseline         ***
+
+[13:47:46]   QuantReg: ret_baseline, q=0.75 ...
+[13:48:00]   QuantReg coefficients (ret_baseline, q=0.75):
+                   coef   std_err      t_stat  p_value  quantile    target significant
+Intercept      7.368177  0.049527  148.769728      0.0      0.75  baseline         ***
+month         -0.021296  0.000929  -22.930288      0.0      0.75  baseline         ***
+log_value_usd -0.910821  0.009023 -100.948506      0.0      0.75  baseline         ***
+num_tokens     1.728320  0.013858  124.712634      0.0      0.75  baseline         ***
+
+[13:48:00]   QuantReg: ret_better_return, q=0.25 ...
+[13:48:17]   QuantReg coefficients (ret_better_return, q=0.25):
+                   coef   std_err      t_stat  p_value  quantile         target significant
+Intercept     -2.809385  0.022605 -124.282780      0.0      0.25  better_return         ***
+month         -0.144755  0.000414 -349.365382      0.0      0.25  better_return         ***
+log_value_usd  0.509656  0.004062  125.484271      0.0      0.25  better_return         ***
+num_tokens    -0.670036  0.005988 -111.891388      0.0      0.25  better_return         ***
+
+[13:48:17]   QuantReg: ret_better_return, q=0.50 ...
+[13:48:34]   QuantReg coefficients (ret_better_return, q=0.5):
+                   coef   std_err      t_stat  p_value  quantile         target significant
+Intercept      1.305101  0.013845   94.265200      0.0       0.5  better_return         ***
+month         -0.047340  0.000255 -185.394464      0.0       0.5  better_return         ***
+log_value_usd -0.263982  0.002308 -114.362777      0.0       0.5  better_return         ***
+num_tokens     0.375988  0.004242   88.624803      0.0       0.5  better_return         ***
+
+[13:48:34]   QuantReg: ret_better_return, q=0.75 ...
+[13:48:46]   QuantReg coefficients (ret_better_return, q=0.75):
+                   coef   std_err      t_stat  p_value  quantile         target significant
+Intercept      8.148868  0.044770  182.016985      0.0      0.75  better_return         ***
+month         -0.059696  0.000864  -69.052978      0.0      0.75  better_return         ***
+log_value_usd -0.852219  0.008194 -104.007518      0.0      0.75  better_return         ***
+num_tokens     2.125303  0.012156  174.829768      0.0      0.75  better_return         ***
+
+[13:48:46]   QuantReg: ret_safer_risk, q=0.25 ...
+[13:49:02]   QuantReg coefficients (ret_safer_risk, q=0.25):
+                   coef   std_err      t_stat  p_value  quantile      target significant
+Intercept     -4.650090  0.012851 -361.855078      0.0      0.25  safer_risk         ***
+month         -0.131252  0.000212 -618.481842      0.0      0.25  safer_risk         ***
+log_value_usd  0.367028  0.002042  179.733401      0.0      0.25  safer_risk         ***
+num_tokens     0.154986  0.004178   37.099237      0.0      0.25  safer_risk         ***
+
+[13:49:02]   QuantReg: ret_safer_risk, q=0.50 ...
+[13:49:15]   QuantReg coefficients (ret_safer_risk, q=0.5):
+                   coef   std_err      t_stat  p_value  quantile      target significant
+Intercept      0.163382  0.010369   15.756425      0.0       0.5  safer_risk         ***
+month         -0.043337  0.000190 -228.174412      0.0       0.5  safer_risk         ***
+log_value_usd -0.219307  0.001718 -127.650539      0.0       0.5  safer_risk         ***
+num_tokens     0.766886  0.003217  238.413348      0.0       0.5  safer_risk         ***
+
+[13:49:15]   QuantReg: ret_safer_risk, q=0.75 ...
+[13:49:25]   QuantReg coefficients (ret_safer_risk, q=0.75):
+                   coef   std_err      t_stat  p_value  quantile      target significant
+Intercept      7.676669  0.049773  154.233337      0.0      0.75  safer_risk         ***
+month         -0.034850  0.000948  -36.774447      0.0      0.75  safer_risk         ***
+log_value_usd -0.976190  0.009067 -107.660810      0.0      0.75  safer_risk         ***
+num_tokens     1.990156  0.013688  145.398288      0.0      0.75  safer_risk         ***
+
+[13:49:26]   QuantReg: ret_max_sharpe, q=0.25 ...
+[13:49:49]   QuantReg coefficients (ret_max_sharpe, q=0.25):
+                   coef   std_err      t_stat  p_value  quantile      target significant
+Intercept     -0.617776  0.016843  -36.678182      0.0      0.25  max_sharpe         ***
+month         -0.157453  0.000309 -509.655823      0.0      0.25  max_sharpe         ***
+log_value_usd -0.205264  0.002767  -74.179305      0.0      0.25  max_sharpe         ***
+num_tokens    -0.198502  0.004908  -40.446206      0.0      0.25  max_sharpe         ***
+
+[13:49:49]   QuantReg: ret_max_sharpe, q=0.50 ...
+[13:50:10]   QuantReg coefficients (ret_max_sharpe, q=0.5):
+                   coef   std_err      t_stat   p_value  quantile      target significant
+Intercept     -0.207164  0.003747  -55.286384  0.000000       0.5  max_sharpe         ***
+month         -0.030034  0.000069 -434.349291  0.000000       0.5  max_sharpe         ***
+log_value_usd -0.000017  0.000625   -0.027969  0.977687       0.5  max_sharpe            
+num_tokens     0.483624  0.001147  421.574836  0.000000       0.5  max_sharpe         ***
+
+[13:50:10]   QuantReg: ret_max_sharpe, q=0.75 ...
+[13:50:26]   QuantReg coefficients (ret_max_sharpe, q=0.75):
+                   coef   std_err       t_stat  p_value  quantile      target significant
+Intercept     -1.202603  0.005512  -218.170742      0.0      0.75  max_sharpe         ***
+month          0.021303  0.000109   194.813581      0.0      0.75  max_sharpe         ***
+log_value_usd -0.072957  0.001053   -69.256150      0.0      0.75  max_sharpe         ***
+num_tokens     2.559496  0.001510  1694.635887      0.0      0.75  max_sharpe         ***
+
+[13:50:26]   QuantReg: ret_equal_weight, q=0.25 ...
+[13:50:46]   QuantReg coefficients (ret_equal_weight, q=0.25):
+                   coef   std_err      t_stat  p_value  quantile        target significant
+Intercept     -2.653963  0.013317 -199.284905      0.0      0.25  equal_weight         ***
+month         -0.136859  0.000218 -627.442671      0.0      0.25  equal_weight         ***
+log_value_usd -0.289854  0.002030 -142.799037      0.0      0.25  equal_weight         ***
+num_tokens     0.347313  0.004451   78.023556      0.0      0.25  equal_weight         ***
+
+[13:50:46]   QuantReg: ret_equal_weight, q=0.50 ...
+[13:50:59]   QuantReg coefficients (ret_equal_weight, q=0.5):
+                   coef   std_err      t_stat  p_value  quantile        target significant
+Intercept      1.332245  0.010413  127.946590      0.0       0.5  equal_weight         ***
+month         -0.072438  0.000190 -380.487166      0.0       0.5  equal_weight         ***
+log_value_usd -0.159251  0.001722  -92.472434      0.0       0.5  equal_weight         ***
+num_tokens     0.633046  0.003240  195.377263      0.0       0.5  equal_weight         ***
+
+[13:50:59]   QuantReg: ret_equal_weight, q=0.75 ...
+[13:51:14]   QuantReg coefficients (ret_equal_weight, q=0.75):
+                   coef   std_err      t_stat  p_value  quantile        target significant
+Intercept      2.980432  0.015451  192.899702      0.0      0.75  equal_weight         ***
+month         -0.020645  0.000306  -67.435673      0.0      0.75  equal_weight         ***
+log_value_usd -0.251065  0.002942  -85.350427      0.0      0.75  equal_weight         ***
+num_tokens     2.537663  0.004362  581.757748      0.0      0.75  equal_weight         ***
+
+[13:51:14]   QuantReg: ret_mcap_weight, q=0.25 ...
+[13:51:24]   QuantReg coefficients (ret_mcap_weight, q=0.25):
+                   coef   std_err       t_stat   p_value  quantile       target significant
+Intercept     -5.316431  0.001527 -3481.896852  0.000000      0.25  mcap_weight         ***
+month         -0.058447  0.000028 -2109.237575  0.000000      0.25  mcap_weight         ***
+log_value_usd -0.000000  0.000254    -0.000022  0.999982      0.25  mcap_weight            
+num_tokens     0.007000  0.000461    15.173612  0.000000      0.25  mcap_weight         ***
+
+[13:51:24]   QuantReg: ret_mcap_weight, q=0.50 ...
+[13:51:38]   QuantReg coefficients (ret_mcap_weight, q=0.5):
+                   coef   std_err      t_stat  p_value  quantile       target significant
+Intercept      2.901059  0.013451  215.670797      0.0       0.5  mcap_weight         ***
+month         -0.049348  0.000245 -201.110283      0.0       0.5  mcap_weight         ***
+log_value_usd -0.244610  0.002219 -110.217303      0.0       0.5  mcap_weight         ***
+num_tokens     0.141275  0.004204   33.602678      0.0       0.5  mcap_weight         ***
+
+[13:51:38]   QuantReg: ret_mcap_weight, q=0.75 ...
+[13:51:47]   QuantReg coefficients (ret_mcap_weight, q=0.75):
+                   coef   std_err       t_stat  p_value  quantile       target significant
+Intercept      2.355962  0.001479  1593.376015      0.0      0.75  mcap_weight         ***
+month          0.125606  0.000027  4726.897067      0.0      0.75  mcap_weight         ***
+log_value_usd -0.008917  0.000258   -34.620128      0.0      0.75  mcap_weight         ***
+num_tokens     0.103003  0.000455   226.352644      0.0      0.75  mcap_weight         ***
+
+[13:51:47]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/quantile_regression_returns_all.csv
+[13:51:47] 
+  --- 7c. Random Forest (feature importance) ---
+[13:51:49]   Random Forest on 2M rows, 32 cores
+[13:51:49] 
+  Training RF for ret_baseline ...
+[13:52:21]   RF ret_baseline: R²=0.6290, MAE=5.75  (32.5s)
+[13:52:21]   Feature importances (ret_baseline):
+         feature  importance    target  R2_test  MAE_test
+0          month      0.7588  baseline    0.629      5.75
+1  log_value_usd      0.2255  baseline    0.629      5.75
+2     num_tokens      0.0158  baseline    0.629      5.75
+
+[13:52:21] 
+  Training RF for ret_better_return ...
+[13:52:50]   RF ret_better_return: R²=0.6031, MAE=6.16  (29.1s)
+[13:52:50]   Feature importances (ret_better_return):
+         feature  importance         target  R2_test  MAE_test
+0          month      0.8104  better_return   0.6031      6.16
+1  log_value_usd      0.1622  better_return   0.6031      6.16
+2     num_tokens      0.0275  better_return   0.6031      6.16
+
+[13:52:50] 
+  Training RF for ret_safer_risk ...
+[13:53:21]   RF ret_safer_risk: R²=0.6328, MAE=5.52  (30.6s)
+[13:53:21]   Feature importances (ret_safer_risk):
+         feature  importance      target  R2_test  MAE_test
+0          month      0.8089  safer_risk   0.6328      5.52
+1  log_value_usd      0.1625  safer_risk   0.6328      5.52
+2     num_tokens      0.0287  safer_risk   0.6328      5.52
+
+[13:53:21] 
+  Training RF for ret_max_sharpe ...
+[13:53:53]   RF ret_max_sharpe: R²=0.5651, MAE=5.58  (32.4s)
+[13:53:53]   Feature importances (ret_max_sharpe):
+         feature  importance      target  R2_test  MAE_test
+0          month      0.8579  max_sharpe   0.5651      5.58
+1  log_value_usd      0.1027  max_sharpe   0.5651      5.58
+2     num_tokens      0.0394  max_sharpe   0.5651      5.58
+
+[13:53:53] 
+  Training RF for ret_equal_weight ...
+[13:54:20]   RF ret_equal_weight: R²=0.5899, MAE=6.38  (26.8s)
+[13:54:20]   Feature importances (ret_equal_weight):
+         feature  importance        target  R2_test  MAE_test
+0          month      0.8302  equal_weight   0.5899      6.38
+1  log_value_usd      0.1298  equal_weight   0.5899      6.38
+2     num_tokens      0.0400  equal_weight   0.5899      6.38
+
+[13:54:20] 
+  Training RF for ret_mcap_weight ...
+[13:54:47]   RF ret_mcap_weight: R²=0.9206, MAE=1.28  (27.1s)
+[13:54:47]   Feature importances (ret_mcap_weight):
+         feature  importance       target  R2_test  MAE_test
+0          month      0.9514  mcap_weight   0.9206      1.28
+1  log_value_usd      0.0474  mcap_weight   0.9206      1.28
+2     num_tokens      0.0012  mcap_weight   0.9206      1.28
+
+[13:54:47]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/random_forest_return_importance.csv
+[13:54:47] ======================================================================
+[13:54:47] SECTION 8: ETH/BTC Holder Detection & Regressions
+[13:54:47] ======================================================================
+[13:54:47]   8a. Prevalence of ETH/BTC wrappers in baseline holdings ...
+[13:59:11]   Done in 263.6s
+[13:59:11]   holds_eth: 769,447,243 (94.12%)
+[13:59:11]   holds_btc: 5,698,199 (0.70%)
+[13:59:11]   holds_both: 5,425,409 (0.66%)
+[13:59:11]   holds_neither: 47,805,753 (5.85%)
+[13:59:11]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/eth_btc_prevalence.csv
+[13:59:11] 
+  8b. Median returns by ETH/BTC holder status ...
+[14:00:04]   Done in 53.3s
+[14:00:04]   Median returns by (holds_eth, holds_btc):
+   holds_eth  holds_btc          n  median_baseline  median_better_return  median_safer_risk  median_max_sharpe  median_equal_weight  median_mcap_weight  median_market
+0          0          0   47805753        -0.017332             -0.017995          -0.017761          -0.019511            -0.022126           -0.005664      -0.004313
+1          0          1     272790        -0.002924             -0.004733          -0.003575          -0.003466            -0.006710           -0.000482      -0.010476
+2          1          0  764021834        -0.004704             -0.009828          -0.008015          -0.006724            -0.018232           -0.000577      -0.004313
+3          1          1    5425409        -0.004187             -0.004129          -0.003755          -0.002094            -0.009645           -0.005365      -0.004313
+
+[14:00:04]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/returns_by_eth_btc_holder.csv
+[14:00:04] 
+  8c. Drawing regression sample with ETH/BTC flags ...
+[14:09:11]   Winsorising ETH/BTC sample at p5/p95 ...
+[14:09:18]   Sample: 10,000,000 rows in 553.7s
+[14:09:18]   holds_eth=1: 9,414,487  holds_btc=1: 34,760
+[14:09:18] 
+  8d. OLS with ETH/BTC holder dummies ...
+[14:09:21] 
+  OLS (ETH/BTC): ret_baseline (%)
+[14:09:21]   R² = 0.0100,  Adj-R² = 0.0100,  N = 9,966,300
+[14:09:21]   Coefficients (ret_baseline %, with ETH/BTC):
+                   coef   std_err      t_stat  p_value significant
+const          4.714702  0.021631  217.957676      0.0         ***
+month         -0.054130  0.000207 -261.953189      0.0         ***
+log_value_usd -0.162869  0.001892  -86.090803      0.0         ***
+num_tokens     0.387161  0.003453  112.116147      0.0         ***
+holds_eth     -2.064755  0.020442 -101.005206      0.0         ***
+holds_btc      0.642667  0.081196    7.915039      0.0         ***
+
+[14:09:21]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_ethbtc_coefs_baseline.csv
+[14:09:23] 
+  OLS (ETH/BTC): ret_better_return (%)
+[14:09:23]   R² = 0.0145,  Adj-R² = 0.0145,  N = 9,969,964
+[14:09:24]   Coefficients (ret_better_return %, with ETH/BTC):
+                   coef   std_err      t_stat  p_value significant
+const          4.701201  0.021438  219.289714      0.0         ***
+month         -0.073306  0.000205 -356.863473      0.0         ***
+log_value_usd -0.099133  0.001879  -52.759639      0.0         ***
+num_tokens     0.404948  0.003335  121.423652      0.0         ***
+holds_eth     -1.221044  0.020326  -60.073185      0.0         ***
+holds_btc      0.576795  0.080634    7.153231      0.0         ***
+
+[14:09:24]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_ethbtc_coefs_better_return.csv
+[14:09:26] 
+  OLS (ETH/BTC): ret_safer_risk (%)
+[14:09:26]   R² = 0.0136,  Adj-R² = 0.0136,  N = 9,969,467
+[14:09:26]   Coefficients (ret_safer_risk %, with ETH/BTC):
+                   coef   std_err      t_stat  p_value significant
+const          4.440609  0.020568  215.900350  0.00000         ***
+month         -0.061490  0.000197 -312.693790  0.00000         ***
+log_value_usd -0.144832  0.001800  -80.454643  0.00000         ***
+num_tokens     0.549901  0.003262  168.598001  0.00000         ***
+holds_eth     -1.767683  0.019453  -90.867370  0.00000         ***
+holds_btc      0.232358  0.077217    3.009155  0.00262          **
+
+[14:09:26]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_ethbtc_coefs_safer_risk.csv
+[14:09:28] 
+  OLS (ETH/BTC): ret_max_sharpe (%)
+[14:09:28]   R² = 0.0175,  Adj-R² = 0.0175,  N = 9,970,768
+[14:09:28]   Coefficients (ret_max_sharpe %, with ETH/BTC):
+                   coef   std_err      t_stat  p_value significant
+const          4.796266  0.018818  254.880962  0.00000         ***
+month         -0.066573  0.000180 -369.351920  0.00000         ***
+log_value_usd -0.135910  0.001649  -82.417001  0.00000         ***
+num_tokens     0.466594  0.002938  158.801867  0.00000         ***
+holds_eth     -1.808712  0.017834 -101.419997  0.00000         ***
+holds_btc      0.055929  0.070752    0.790493  0.42924            
+
+[14:09:28]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_ethbtc_coefs_max_sharpe.csv
+[14:09:31] 
+  OLS (ETH/BTC): ret_equal_weight (%)
+[14:09:31]   R² = 0.0233,  Adj-R² = 0.0233,  N = 9,966,300
+[14:09:31]   Coefficients (ret_equal_weight %, with ETH/BTC):
+                   coef   std_err      t_stat   p_value significant
+const          5.417593  0.020419  265.315597  0.000000         ***
+month         -0.077239  0.000195 -395.968201  0.000000         ***
+log_value_usd -0.277977  0.001786 -155.656165  0.000000         ***
+num_tokens     0.736487  0.003260  225.933600  0.000000         ***
+holds_eth     -1.940641  0.019297 -100.567774  0.000000         ***
+holds_btc     -0.035697  0.076647   -0.465729  0.641409            
+
+[14:09:31]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_ethbtc_coefs_equal_weight.csv
+[14:09:33] 
+  OLS (ETH/BTC): ret_mcap_weight (%)
+[14:09:33]   R² = 0.0026,  Adj-R² = 0.0026,  N = 9,959,283
+[14:09:33]   Coefficients (ret_mcap_weight %, with ETH/BTC):
+                   coef   std_err      t_stat   p_value significant
+const          3.309143  0.017049  194.094124  0.000000         ***
+month          0.006134  0.000163   37.706423  0.000000         ***
+log_value_usd -0.063108  0.001489  -42.376883  0.000000         ***
+num_tokens     0.105440  0.002750   38.344589  0.000000         ***
+holds_eth     -2.254005  0.016091 -140.078265  0.000000         ***
+holds_btc      0.225650  0.063921    3.530126  0.000415         ***
+
+[14:09:33]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_ethbtc_coefs_mcap_weight.csv
+[14:09:33] 
+  OLS Summary (returns, with ETH/BTC dummies):
+                   R2  Adj_R2    F_stat  F_pvalue
+target                                           
+baseline       0.0100  0.0100  20084.10       0.0
+better_return  0.0145  0.0145  29389.05       0.0
+safer_risk     0.0136  0.0136  27583.22       0.0
+max_sharpe     0.0175  0.0175  35456.81       0.0
+equal_weight   0.0233  0.0233  47563.72       0.0
+mcap_weight    0.0026  0.0026   5225.59       0.0
+
+[14:09:33]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_ethbtc_summary.csv
+[14:09:33] 
+  8e. OLS with ETH/BTC dummies → alpha (risk-adjusted return) ...
+[14:09:36] 
+  OLS (ETH/BTC): alpha_baseline (%)
+[14:09:36]   R² = 0.0239,  Adj-R² = 0.0239,  N = 9,966,300
+[14:09:36]   Coefficients (alpha_baseline %, with ETH/BTC):
+                   coef   std_err      t_stat  p_value significant
+const          2.450855  0.014551  168.432656      0.0         ***
+month         -0.065439  0.000139 -470.772403      0.0         ***
+log_value_usd -0.052075  0.001273  -40.919870      0.0         ***
+num_tokens     0.213274  0.002323   91.813268      0.0         ***
+holds_eth     -1.375198  0.013751 -100.007232      0.0         ***
+holds_btc      0.580502  0.054619   10.628246      0.0         ***
+
+[14:09:36]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_alpha_ethbtc_coefs_baseline.csv
+[14:09:38] 
+  OLS (ETH/BTC): alpha_better_return (%)
+[14:09:38]   R² = 0.0341,  Adj-R² = 0.0341,  N = 9,969,964
+[14:09:38]   Coefficients (alpha_better_return %, with ETH/BTC):
+                   coef   std_err      t_stat  p_value significant
+const          2.757554  0.015401  179.051451      0.0         ***
+month         -0.086294  0.000148 -584.774090      0.0         ***
+log_value_usd  0.019386  0.001350   14.361984      0.0         ***
+num_tokens     0.259778  0.002396  108.430065      0.0         ***
+holds_eth     -0.882289  0.014602  -60.423276      0.0         ***
+holds_btc      0.420199  0.057926    7.254044      0.0         ***
+
+[14:09:38]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_alpha_ethbtc_coefs_better_return.csv
+[14:09:41] 
+  OLS (ETH/BTC): alpha_safer_risk (%)
+[14:09:41]   R² = 0.0323,  Adj-R² = 0.0323,  N = 9,969,467
+[14:09:41]   Coefficients (alpha_safer_risk %, with ETH/BTC):
+                   coef   std_err      t_stat   p_value significant
+const          2.153244  0.014225  151.372855  0.000000         ***
+month         -0.074197  0.000136 -545.565948  0.000000         ***
+log_value_usd -0.026512  0.001245  -21.294709  0.000000         ***
+num_tokens     0.432487  0.002256  191.727681  0.000000         ***
+holds_eth     -1.131083  0.013454  -84.070179  0.000000         ***
+holds_btc      0.221036  0.053404    4.138977  0.000035         ***
+
+[14:09:41]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_alpha_ethbtc_coefs_safer_risk.csv
+[14:09:43] 
+  OLS (ETH/BTC): alpha_max_sharpe (%)
+[14:09:43]   R² = 0.0368,  Adj-R² = 0.0368,  N = 9,970,768
+[14:09:43]   Coefficients (alpha_max_sharpe %, with ETH/BTC):
+                   coef   std_err      t_stat   p_value significant
+const          2.457242  0.011823  207.837486  0.000000         ***
+month         -0.066539  0.000113 -587.566191  0.000000         ***
+log_value_usd -0.025957  0.001036  -25.053509  0.000000         ***
+num_tokens     0.340557  0.001846  184.479102  0.000000         ***
+holds_eth     -1.037464  0.011205  -92.591024  0.000000         ***
+holds_btc     -0.088830  0.044453   -1.998297  0.045684           *
+
+[14:09:44]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_alpha_ethbtc_coefs_max_sharpe.csv
+[14:09:46] 
+  OLS (ETH/BTC): alpha_equal_weight (%)
+[14:09:46]   R² = 0.0468,  Adj-R² = 0.0468,  N = 9,966,300
+[14:09:46]   Coefficients (alpha_equal_weight %, with ETH/BTC):
+                   coef   std_err      t_stat  p_value significant
+const          4.224069  0.015264  276.733444      0.0         ***
+month         -0.091990  0.000146 -630.871240      0.0         ***
+log_value_usd -0.158807  0.001335 -118.960061      0.0         ***
+num_tokens     0.603673  0.002437  247.737224      0.0         ***
+holds_eth     -2.058001  0.014425 -142.670278      0.0         ***
+holds_btc     -0.377498  0.057295   -6.588616      0.0         ***
+
+[14:09:46]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_alpha_ethbtc_coefs_equal_weight.csv
+[14:09:48] 
+  OLS (ETH/BTC): alpha_mcap_weight (%)
+[14:09:48]   R² = 0.0075,  Adj-R² = 0.0075,  N = 9,959,283
+[14:09:48]   Coefficients (alpha_mcap_weight %, with ETH/BTC):
+                   coef   std_err      t_stat   p_value significant
+const          0.732873  0.006372  115.008946  0.000000         ***
+month         -0.007223  0.000061 -118.803381  0.000000         ***
+log_value_usd  0.043194  0.000557   77.603655  0.000000         ***
+num_tokens     0.031766  0.001028   30.907598  0.000000         ***
+holds_eth     -1.455326  0.006014 -241.981700  0.000000         ***
+holds_btc     -0.010636  0.023891   -0.445164  0.656201            
+
+[14:09:48]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_alpha_ethbtc_coefs_mcap_weight.csv
+[14:09:48] 
+  OLS Summary (alpha, with ETH/BTC dummies):
+                   R2  Adj_R2    F_stat  F_pvalue
+target                                           
+baseline       0.0239  0.0239  48745.43       0.0
+better_return  0.0341  0.0341  70442.49       0.0
+safer_risk     0.0323  0.0323  66561.48       0.0
+max_sharpe     0.0368  0.0368  76094.71       0.0
+equal_weight   0.0468  0.0468  97895.63       0.0
+mcap_weight    0.0075  0.0075  14960.04       0.0
+
+[14:09:48]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_alpha_ethbtc_summary.csv
+[14:09:48] 
+  8f. Random Forest with ETH/BTC features ...
+[14:09:49]   RF on 2M rows with features: ['month', 'log_value_usd', 'num_tokens', 'holds_eth', 'holds_btc']
+[14:09:49] 
+  Training RF for ret_baseline (with ETH/BTC) ...
+[14:10:22]   RF ret_baseline (ETH/BTC): R²=0.6328, MAE=5.61  (32.4s)
+[14:10:22]   Feature importances (ret_baseline, with ETH/BTC):
+         feature  importance    target  R2_test  MAE_test
+0          month      0.7451  baseline   0.6328      5.61
+1  log_value_usd      0.2191  baseline   0.6328      5.61
+3      holds_eth      0.0204  baseline   0.6328      5.61
+2     num_tokens      0.0153  baseline   0.6328      5.61
+4      holds_btc      0.0000  baseline   0.6328      5.61
+
+[14:10:22] 
+  Training RF for ret_better_return (with ETH/BTC) ...
+[14:10:52]   RF ret_better_return (ETH/BTC): R²=0.6054, MAE=6.03  (30.0s)
+[14:10:52]   Feature importances (ret_better_return, with ETH/BTC):
+         feature  importance         target  R2_test  MAE_test
+0          month      0.8004  better_return   0.6054      6.03
+1  log_value_usd      0.1533  better_return   0.6054      6.03
+2     num_tokens      0.0284  better_return   0.6054      6.03
+3      holds_eth      0.0180  better_return   0.6054      6.03
+4      holds_btc      0.0000  better_return   0.6054      6.03
+
+[14:10:52] 
+  Training RF for ret_safer_risk (with ETH/BTC) ...
+[14:11:22]   RF ret_safer_risk (ETH/BTC): R²=0.6302, MAE=5.39  (30.3s)
+[14:11:22]   Feature importances (ret_safer_risk, with ETH/BTC):
+         feature  importance      target  R2_test  MAE_test
+0          month      0.8032  safer_risk   0.6302      5.39
+1  log_value_usd      0.1480  safer_risk   0.6302      5.39
+2     num_tokens      0.0293  safer_risk   0.6302      5.39
+3      holds_eth      0.0195  safer_risk   0.6302      5.39
+4      holds_btc      0.0000  safer_risk   0.6302      5.39
+
+[14:11:22] 
+  Training RF for ret_max_sharpe (with ETH/BTC) ...
+[14:11:55]   RF ret_max_sharpe (ETH/BTC): R²=0.5615, MAE=5.60  (33.0s)
+[14:11:55]   Feature importances (ret_max_sharpe, with ETH/BTC):
+         feature  importance      target  R2_test  MAE_test
+0          month      0.8409  max_sharpe   0.5615       5.6
+1  log_value_usd      0.0930  max_sharpe   0.5615       5.6
+2     num_tokens      0.0407  max_sharpe   0.5615       5.6
+3      holds_eth      0.0254  max_sharpe   0.5615       5.6
+4      holds_btc      0.0000  max_sharpe   0.5615       5.6
+
+[14:11:55] 
+  Training RF for ret_equal_weight (with ETH/BTC) ...
+[14:12:22]   RF ret_equal_weight (ETH/BTC): R²=0.5888, MAE=6.17  (27.0s)
+[14:12:22]   Feature importances (ret_equal_weight, with ETH/BTC):
+         feature  importance        target  R2_test  MAE_test
+0          month      0.8183  equal_weight   0.5888      6.17
+1  log_value_usd      0.1209  equal_weight   0.5888      6.17
+2     num_tokens      0.0424  equal_weight   0.5888      6.17
+3      holds_eth      0.0184  equal_weight   0.5888      6.17
+4      holds_btc      0.0000  equal_weight   0.5888      6.17
+
+[14:12:22] 
+  Training RF for ret_mcap_weight (with ETH/BTC) ...
+[14:12:54]   RF ret_mcap_weight (ETH/BTC): R²=0.9422, MAE=0.97  (31.2s)
+[14:12:54]   Feature importances (ret_mcap_weight, with ETH/BTC):
+         feature  importance       target  R2_test  MAE_test
+0          month      0.9237  mcap_weight   0.9422      0.97
+1  log_value_usd      0.0412  mcap_weight   0.9422      0.97
+3      holds_eth      0.0327  mcap_weight   0.9422      0.97
+2     num_tokens      0.0024  mcap_weight   0.9422      0.97
+4      holds_btc      0.0000  mcap_weight   0.9422      0.97
+
+[14:12:54]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/random_forest_return_ethbtc_importance.csv
+[14:12:54] ======================================================================
+[14:12:54] SECTION 9: Alpha Analysis (full data)
+[14:12:54] ======================================================================
+[14:12:54]   9a. Alpha descriptive statistics ...
+[14:15:18]   Done in 144.7s
+[14:15:18] Alpha descriptive statistics (full data):
+                 mean_alpha     std_alpha  median_alpha  p05_alpha  p95_alpha  positive_alpha_pct
+portfolio                                                                                        
+baseline       1.750242e+03  4.988080e+07     -0.008758    -0.2209     0.1742               39.41
+better_return  2.720309e+29  3.435745e+32     -0.008895    -0.2197     0.1839               38.99
+safer_risk     6.486689e+29  8.511411e+32     -0.008439    -0.2048     0.1745               39.24
+max_sharpe     3.713604e+29  4.692989e+32     -0.004911    -0.2122     0.1828               42.22
+equal_weight   8.302714e+29  9.280234e+32     -0.018074    -0.2015     0.2230               37.51
+mcap_weight    1.423000e-02  6.299735e+00     -0.003517    -0.0951     0.1064               42.88
+
+[14:15:18]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/alpha_descriptive_stats.csv
+[14:15:18] 
+  9b. Alpha improvement: optimised − baseline alpha ...
+[14:17:21] Alpha improvement over baseline:
+               mean_alpha_improvement  median_alpha_improvement  alpha_win_pct
+strategy                                                                      
+better_return            2.722423e+29                  0.000000          44.67
+safer_risk               6.490813e+29                  0.000000          45.48
+max_sharpe               3.717066e+29                  0.000810          52.43
+equal_weight             8.302714e+29                 -0.000387          49.00
+mcap_weight             -1.752517e+03                  0.001450          54.70
+
+[14:17:21]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/alpha_improvement_vs_baseline.csv
+[14:17:21] ======================================================================
+[14:17:21] SECTION 10: Additional Analytics
+[14:17:21] ======================================================================
+[14:17:21] 
+  10a. Cross-return correlation matrix ...
+[14:17:29]   Done in 7.9s
+[14:17:29] Cross-return Pearson correlation matrix:
+               baseline  better_return  safer_risk  max_sharpe  equal_weight  mcap_weight
+baseline            1.0         0.0000      0.0000      0.0000        0.0000         -0.0
+better_return       0.0         1.0000      0.8332      0.9026        0.9054         -0.0
+safer_risk          0.0         0.8332      1.0000      0.9694        0.9457         -0.0
+max_sharpe          0.0         0.9026      0.9694      1.0000        0.9547         -0.0
+equal_weight        0.0         0.9054      0.9457      0.9547        1.0000         -0.0
+mcap_weight        -0.0        -0.0000     -0.0000     -0.0000       -0.0000          1.0
+
+[14:17:29]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/cross_return_correlation.csv
+[14:17:29] 
+  10b. Mean returns by num_tokens bucket ...
+[14:17:54] Mean returns by num_tokens bucket:
+  token_bucket          n  mean_baseline  mean_better_return  mean_safer_risk  mean_max_sharpe  mean_equal_weight  mean_mcap_weight  mean_market
+0          1-2  621307056    2295.576606        2.519852e+29     7.900373e+29     4.182890e+29       7.900373e+29          0.045395     0.029745
+1          3-5  166499696       0.031117        3.876583e+29     2.177147e+29     2.480439e+29       9.425610e+29          0.044879     0.027161
+2         6-10   23167812       0.017629        4.786248e+28     7.702067e+28     7.525168e+28       9.709838e+29          0.052480     0.026238
+3        11-20    5343907       0.016605        1.571805e+28     5.597716e+28     4.578170e+28       1.325523e+30          0.051625     0.024181
+4        21-50    1099434      -0.001427        7.338836e+27     2.933185e+28     2.314762e+28       1.366707e+30          0.070291     0.020862
+5          50+     107881       0.128495        8.159837e+27     4.832371e+28     3.332946e+28       5.439150e+30          0.291381     0.019811
+
+[14:17:54]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/returns_by_token_bucket.csv
+[14:17:54] 
+  10c. Mean returns by portfolio value bucket ...
+[14:18:07] Mean returns by portfolio value bucket:
+  value_bucket          n  mean_baseline  mean_better_return  mean_safer_risk  mean_max_sharpe  mean_equal_weight  mean_mcap_weight  mean_market
+0         $0-1   83216645   17321.725507        1.427525e+29     3.752341e+29     2.247010e+29       3.905704e+29          0.061655     0.037523
+1        $1-10  129660835       0.068851        1.635610e+29     4.667786e+29     2.511789e+29       4.850166e+29          0.073122     0.046575
+2      $10-100  281946565       0.029503        2.938376e+29     8.412717e+29     4.484426e+29       9.127241e+29          0.045173     0.029204
+3      $100-1K  195138114       0.021336        3.293133e+29     7.342780e+29     4.299844e+29       9.604719e+29          0.031525     0.019205
+4      $1K-10K   91310865       0.013942        3.105095e+29     5.177788e+29     3.471251e+29       9.970508e+29          0.030714     0.020315
+5    $10K-100K   28804362       0.012394        3.582394e+29     3.253082e+29     2.917830e+29       1.318589e+30          0.027871     0.021384
+6     $100K-1M    6125343       0.022310        5.537131e+29     1.864646e+29     2.807213e+29       1.460908e+30          0.023420     0.020849
+7         $1M+    1323057       0.016118        5.001886e+12     1.081844e+28     1.023639e+28       1.809965e+29          0.020910     0.017941
+
+[14:18:07]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/returns_by_value_bucket.csv
+[14:18:07] 
+  10d. Extended OLS with polynomial + interaction + ETH/BTC features
+[14:18:12] 
+  Extended OLS: ret_baseline  R² = 0.0116
+[14:18:12]   Extended OLS coefficients (ret_baseline):
+                        coef   std_err      t_stat  p_value significant
+const              -0.651115  0.051223  -12.711456      0.0         ***
+month              -0.055123  0.000207 -266.697749      0.0         ***
+log_value_usd      -0.134624  0.003397  -39.634512      0.0         ***
+num_tokens         -0.288078  0.016053  -17.945832      0.0         ***
+holds_eth          -1.941337  0.020487  -94.761481      0.0         ***
+holds_btc          -2.724150  0.360143   -7.564081      0.0         ***
+num_tokens_sq       0.001521  0.000069   22.043497      0.0         ***
+log_value_x_tokens -0.027510  0.001105  -24.898998      0.0         ***
+log_num_tokens      5.918092  0.064256   92.101614      0.0         ***
+eth_x_btc           3.613857  0.369478    9.780975      0.0         ***
+
+[14:18:12]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_extended_coefs_baseline.csv
+[14:18:15] 
+  Extended OLS: ret_better_return  R² = 0.0165
+[14:18:15]   Extended OLS coefficients (ret_better_return):
+                        coef   std_err      t_stat  p_value significant
+const              -0.906777  0.050931  -17.804110      0.0         ***
+month              -0.074309  0.000206 -361.583504      0.0         ***
+log_value_usd      -0.057274  0.003377  -16.958772      0.0         ***
+num_tokens         -0.177820  0.015961  -11.140751      0.0         ***
+holds_eth          -1.083404  0.020370  -53.186699      0.0         ***
+holds_btc          -1.961398  0.358091   -5.477380      0.0         ***
+num_tokens_sq       0.001233  0.000069   17.966936      0.0         ***
+log_value_x_tokens -0.034971  0.001099  -31.832946      0.0         ***
+log_num_tokens      5.946439  0.063890   93.073142      0.0         ***
+eth_x_btc           2.713260  0.367373    7.385579      0.0         ***
+
+[14:18:15]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_extended_coefs_better_return.csv
+[14:18:17] 
+  Extended OLS: ret_safer_risk  R² = 0.0172
+[14:18:17]   Extended OLS coefficients (ret_safer_risk):
+                        coef   std_err      t_stat  p_value significant
+const              -3.257234  0.048712  -66.867101      0.0         ***
+month              -0.062800  0.000197 -319.499668      0.0         ***
+log_value_usd      -0.145002  0.003230  -44.890070      0.0         ***
+num_tokens         -0.563971  0.015266  -36.943305      0.0         ***
+holds_eth          -1.592035  0.019482  -81.716397      0.0         ***
+holds_btc          -2.516460  0.342491   -7.347524      0.0         ***
+num_tokens_sq       0.002282  0.000066   34.762844      0.0         ***
+log_value_x_tokens -0.023734  0.001051  -22.587880      0.0         ***
+log_num_tokens      8.782087  0.061107  143.717296      0.0         ***
+eth_x_btc           2.985560  0.351369    8.496946      0.0         ***
+
+[14:18:17]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_extended_coefs_safer_risk.csv
+[14:18:20] 
+  Extended OLS: ret_max_sharpe  R² = 0.0208
+[14:18:20]   Extended OLS coefficients (ret_max_sharpe):
+                        coef   std_err      t_stat  p_value significant
+const              -1.842539  0.044646  -41.269648      0.0         ***
+month              -0.067697  0.000180 -375.779881      0.0         ***
+log_value_usd      -0.119108  0.002961  -40.231632      0.0         ***
+num_tokens         -0.377658  0.013992  -26.991602      0.0         ***
+holds_eth          -1.649430  0.017856  -92.372177      0.0         ***
+holds_btc          -2.761829  0.313905   -8.798291      0.0         ***
+num_tokens_sq       0.001747  0.000060   29.049024      0.0         ***
+log_value_x_tokens -0.028117  0.000963  -29.196816      0.0         ***
+log_num_tokens      7.345104  0.056006  131.147427      0.0         ***
+eth_x_btc           3.026167  0.322042    9.396809      0.0         ***
+
+[14:18:20]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_extended_coefs_max_sharpe.csv
+[14:18:23] 
+  Extended OLS: ret_equal_weight  R² = 0.0291
+[14:18:23]   Extended OLS coefficients (ret_equal_weight):
+                         coef   std_err      t_stat  p_value significant
+const               -4.327220  0.048244  -89.694021      0.0         ***
+month               -0.078985  0.000195 -405.737503      0.0         ***
+log_value_usd       -0.255235  0.003199  -79.782606      0.0         ***
+num_tokens          -0.601190  0.015119  -39.763259      0.0         ***
+holds_eth           -1.716897  0.019295  -88.979932      0.0         ***
+holds_btc           -3.028758  0.339202   -8.929078      0.0         ***
+num_tokens_sq        0.002819  0.000065   43.367050      0.0         ***
+log_value_x_tokens  -0.038934  0.001041  -37.413402      0.0         ***
+log_num_tokens      10.973195  0.060520  181.315715      0.0         ***
+eth_x_btc            3.273394  0.347994    9.406463      0.0         ***
+
+[14:18:23]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_extended_coefs_equal_weight.csv
+[14:18:26] 
+  Extended OLS: ret_mcap_weight  R² = 0.0027
+[14:18:26]   Extended OLS coefficients (ret_mcap_weight):
+                        coef   std_err      t_stat   p_value significant
+const               2.376418  0.040340   58.910339  0.000000         ***
+month               0.005989  0.000163   36.790455  0.000000         ***
+log_value_usd      -0.097928  0.002675  -36.609119  0.000000         ***
+num_tokens         -0.167887  0.012642  -13.280069  0.000000         ***
+holds_eth          -2.243732  0.016134 -139.069809  0.000000         ***
+holds_btc          -2.598308  0.283625   -9.161085  0.000000         ***
+num_tokens_sq       0.000230  0.000054    4.232899  0.000023         ***
+log_value_x_tokens  0.010818  0.000870   12.432512  0.000000         ***
+log_num_tokens      1.348738  0.050604   26.652885  0.000000         ***
+eth_x_btc           2.978798  0.290976   10.237248  0.000000         ***
+
+[14:18:26]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_return_extended_coefs_mcap_weight.csv
+[14:18:30] 
+  Extended OLS: alpha_baseline  R² = 0.0253
+[14:18:30]   Extended OLS coefficients (alpha_baseline):
+                        coef   std_err      t_stat   p_value significant
+const              -0.888192  0.034465  -25.770520  0.000000         ***
+month              -0.066023  0.000139 -474.742093  0.000000         ***
+log_value_usd      -0.005016  0.002285   -2.194897  0.028171           *
+num_tokens         -0.083637  0.010801   -7.743389  0.000000         ***
+holds_eth          -1.302204  0.013784  -94.468785  0.000000         ***
+holds_btc          -1.115441  0.242324   -4.603099  0.000004         ***
+num_tokens_sq       0.000863  0.000046   18.574882  0.000000         ***
+log_value_x_tokens -0.028920  0.000743  -38.901371  0.000000         ***
+log_num_tokens      3.442480  0.043235   79.622429  0.000000         ***
+eth_x_btc           1.831763  0.248605    7.368157  0.000000         ***
+
+[14:18:30]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_alpha_extended_coefs_baseline.csv
+[14:18:34] 
+  Extended OLS: alpha_better_return  R² = 0.0358
+[14:18:34]   Extended OLS coefficients (alpha_better_return):
+                        coef   std_err      t_stat   p_value significant
+const              -0.921811  0.036593  -25.190677  0.000000         ***
+month              -0.086983  0.000148 -589.084078  0.000000         ***
+log_value_usd       0.079665  0.002427   32.830651  0.000000         ***
+num_tokens          0.019120  0.011468    1.667228  0.095469            
+holds_eth          -0.791397  0.014636  -54.073592  0.000000         ***
+holds_btc          -0.745080  0.257285   -2.895931  0.003780          **
+num_tokens_sq       0.000599  0.000049   12.139344  0.000000         ***
+log_value_x_tokens -0.036114  0.000789  -45.753724  0.000000         ***
+log_num_tokens      3.622749  0.045904   78.919417  0.000000         ***
+eth_x_btc           1.254997  0.263954    4.754598  0.000002         ***
+
+[14:18:34]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_alpha_extended_coefs_better_return.csv
+[14:18:38] 
+  Extended OLS: alpha_safer_risk  R² = 0.0368
+[14:18:38]   Extended OLS coefficients (alpha_safer_risk):
+                        coef   std_err      t_stat   p_value significant
+const              -3.799715  0.033678 -112.825486  0.000000         ***
+month              -0.075227  0.000136 -553.577003  0.000000         ***
+log_value_usd      -0.006736  0.002233   -3.016410  0.002558          **
+num_tokens         -0.341083  0.010554  -32.317062  0.000000         ***
+holds_eth          -0.995231  0.013469  -73.887906  0.000000         ***
+holds_btc          -0.951583  0.236786   -4.018744  0.000059         ***
+num_tokens_sq       0.001616  0.000045   35.622620  0.000000         ***
+log_value_x_tokens -0.026404  0.000726  -36.346913  0.000000         ***
+log_num_tokens      6.620240  0.042247  156.703171  0.000000         ***
+eth_x_btc           1.302651  0.242924    5.362382  0.000000         ***
+
+[14:18:38]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_alpha_extended_coefs_safer_risk.csv
+[14:18:42] 
+  Extended OLS: alpha_max_sharpe  R² = 0.0413
+[14:18:42]   Extended OLS coefficients (alpha_max_sharpe):
+                        coef   std_err      t_stat   p_value significant
+const              -2.398118  0.028031  -85.553167  0.000000         ***
+month              -0.067405  0.000113 -595.939370  0.000000         ***
+log_value_usd       0.008391  0.001859    4.514255  0.000006         ***
+num_tokens         -0.185322  0.008785  -21.096333  0.000000         ***
+holds_eth          -0.920930  0.011211  -82.145766  0.000000         ***
+holds_btc          -1.031564  0.197082   -5.234183  0.000000         ***
+num_tokens_sq       0.001139  0.000038   30.154347  0.000000         ***
+log_value_x_tokens -0.029389  0.000605  -48.607309  0.000000         ***
+log_num_tokens      5.192725  0.035163  147.675554  0.000000         ***
+eth_x_btc           1.037480  0.202191    5.131197  0.000000         ***
+
+[14:18:42]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_alpha_extended_coefs_max_sharpe.csv
+[14:18:46] 
+  Extended OLS: alpha_equal_weight  R² = 0.0544
+[14:18:46]   Extended OLS coefficients (alpha_equal_weight):
+                        coef   std_err      t_stat  p_value significant
+const              -4.178688  0.036031 -115.974609      0.0         ***
+month              -0.093468  0.000145 -642.884085      0.0         ***
+log_value_usd      -0.133020  0.002389  -55.674334      0.0         ***
+num_tokens         -0.525496  0.011292  -46.538050      0.0         ***
+holds_eth          -1.865564  0.014411 -129.457227      0.0         ***
+holds_btc          -2.062021  0.253332   -8.139611      0.0         ***
+num_tokens_sq       0.002488  0.000049   51.254825      0.0         ***
+log_value_x_tokens -0.036021  0.000777  -46.347550      0.0         ***
+log_num_tokens      9.414230  0.045199  208.283863      0.0         ***
+eth_x_btc           1.880372  0.259898    7.235030      0.0         ***
+
+[14:18:46]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_alpha_extended_coefs_equal_weight.csv
+[14:18:50] 
+  Extended OLS: alpha_mcap_weight  R² = 0.0075
+[14:18:50]   Extended OLS coefficients (alpha_mcap_weight):
+                        coef   std_err      t_stat  p_value significant
+const               0.472865  0.015078   31.361906  0.00000         ***
+month              -0.007270  0.000061 -119.489291  0.00000         ***
+log_value_usd       0.035355  0.001000   35.361580  0.00000         ***
+num_tokens         -0.033040  0.004725   -6.992218  0.00000         ***
+holds_eth          -1.451647  0.006030 -240.724215  0.00000         ***
+holds_btc          -0.697463  0.106010   -6.579217  0.00000         ***
+num_tokens_sq      -0.000005  0.000020   -0.264077  0.79172            
+log_value_x_tokens  0.002216  0.000325    6.814235  0.00000         ***
+log_num_tokens      0.353654  0.018914   18.697882  0.00000         ***
+eth_x_btc           0.723835  0.108758    6.655466  0.00000         ***
+
+[14:18:50]   → saved /path/to/mpt-optimization-results-eth/return_analysis_results/ols_alpha_extended_coefs_mcap_weight.csv
+
+[14:18:50] ======================================================================
+[14:18:50] RETURN ANALYSIS COMPLETE — 63.2 minutes
+[14:18:50] All results saved to: /path/to/mpt-optimization-results-eth/return_analysis_results
+[14:18:50] ======================================================================
+[14:18:50] 
+Output files:
+[14:18:50]   alpha_descriptive_stats.csv                                      558 bytes
+[14:18:50]   alpha_improvement_vs_baseline.csv                                297 bytes
+[14:18:50]   correlation_returns_sample.csv                                   832 bytes
+[14:18:50]   correlation_win_lose_sample.csv                                  748 bytes
+[14:18:50]   cross_return_correlation.csv                                     331 bytes
+[14:18:50]   eth_btc_prevalence.csv                                           124 bytes
+[14:18:50]   ols_alpha_ethbtc_coefs_baseline.csv                              525 bytes
+[14:18:50]   ols_alpha_ethbtc_coefs_better_return.csv                         539 bytes
+[14:18:50]   ols_alpha_ethbtc_coefs_equal_weight.csv                          525 bytes
+[14:18:50]   ols_alpha_ethbtc_coefs_max_sharpe.csv                            545 bytes
+[14:18:50]   ols_alpha_ethbtc_coefs_mcap_weight.csv                           545 bytes
+[14:18:50]   ols_alpha_ethbtc_coefs_safer_risk.csv                            545 bytes
+[14:18:50]   ols_alpha_ethbtc_summary.csv                                     265 bytes
+[14:18:50]   ols_alpha_extended_coefs_baseline.csv                            949 bytes
+[14:18:50]   ols_alpha_extended_coefs_better_return.csv                       934 bytes
+[14:18:50]   ols_alpha_extended_coefs_equal_weight.csv                        872 bytes
+[14:18:50]   ols_alpha_extended_coefs_max_sharpe.csv                          929 bytes
+[14:18:50]   ols_alpha_extended_coefs_mcap_weight.csv                         980 bytes
+[14:18:50]   ols_alpha_extended_coefs_safer_risk.csv                          945 bytes
+[14:18:50]   ols_return_coefs_baseline.csv                                    352 bytes
+[14:18:50]   ols_return_coefs_better_return.csv                               350 bytes
+[14:18:50]   ols_return_coefs_equal_weight.csv                                351 bytes
+[14:18:50]   ols_return_coefs_max_sharpe.csv                                  353 bytes
+[14:18:50]   ols_return_coefs_mcap_weight.csv                                 370 bytes
+[14:18:50]   ols_return_coefs_safer_risk.csv                                  350 bytes
+[14:18:50]   ols_return_ethbtc_coefs_baseline.csv                             521 bytes
+[14:18:50]   ols_return_ethbtc_coefs_better_return.csv                        521 bytes
+[14:18:50]   ols_return_ethbtc_coefs_equal_weight.csv                         522 bytes
+[14:18:50]   ols_return_ethbtc_coefs_max_sharpe.csv                           523 bytes
+[14:18:50]   ols_return_ethbtc_coefs_mcap_weight.csv                          522 bytes
+[14:18:50]   ols_return_ethbtc_coefs_safer_risk.csv                           525 bytes
+[14:18:50]   ols_return_ethbtc_summary.csv                                    259 bytes
+[14:18:50]   ols_return_extended_coefs_baseline.csv                           948 bytes
+[14:18:50]   ols_return_extended_coefs_better_return.csv                      963 bytes
+[14:18:50]   ols_return_extended_coefs_equal_weight.csv                       886 bytes
+[14:18:50]   ols_return_extended_coefs_max_sharpe.csv                         934 bytes
+[14:18:50]   ols_return_extended_coefs_mcap_weight.csv                        982 bytes
+[14:18:50]   ols_return_extended_coefs_safer_risk.csv                         929 bytes
+[14:18:50]   ols_return_summary.csv                                           263 bytes
+[14:18:50]   pearson_returns_full_data.csv                                    265 bytes
+[14:18:50]   pearson_win_lose_full_data.csv                                   252 bytes
+[14:18:50]   quantile_regression_returns_all.csv                            7,097 bytes
+[14:18:50]   random_forest_return_ethbtc_importance.csv                     1,711 bytes
+[14:18:50]   random_forest_return_importance.csv                            1,045 bytes
+[14:18:50]   return_analysis_log.txt                                       74,502 bytes
+[14:18:50]   return_descriptive_stats.csv                                   1,015 bytes
+[14:18:50]   return_distribution_count.csv                                    695 bytes
+[14:18:50]   return_distribution_pct.csv                                      487 bytes
+[14:18:50]   returns_by_distance_bucket_better_return.csv                     824 bytes
+[14:18:50]   returns_by_distance_bucket_max_sharpe.csv                        821 bytes
+[14:18:50]   returns_by_distance_bucket_safer_risk.csv                        825 bytes
+[14:18:50]   returns_by_eth_btc_holder.csv                                    486 bytes
+[14:18:50]   returns_by_token_bucket.csv                                      906 bytes
+[14:18:50]   returns_by_value_bucket.csv                                    1,187 bytes
+[14:18:50]   strategy_vs_baseline_win_rates.csv                               360 bytes

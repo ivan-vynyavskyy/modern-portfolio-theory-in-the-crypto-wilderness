@@ -23,7 +23,7 @@ suppressPackageStartupMessages({
 
 option_list <- list(
   make_option("--in-csv",  type = "character",
-              default = "../data/rf_shap_data/rf_shap_values_baseline.csv"),
+              default = "../data/rf_shap_results/rf_shap_values_baseline.csv"),
   make_option("--out-pdf", type = "character", default = "../graphics/shap_month_dep_baseline.pdf"),
   make_option("--width",   type = "double", default = 10),
   make_option("--height",  type = "double", default = 5)

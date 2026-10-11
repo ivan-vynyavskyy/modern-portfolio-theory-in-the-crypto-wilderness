@@ -1,0 +1,4 @@
+feature,baseline,better_return,safer_risk,max_sharpe,equal_weight,mcap_weight
+month,-0.1097,-0.1038,-0.1049,-0.0924,-0.1166,-0.1298
+log_value_usd,-0.0183,-0.0291,-0.0208,-0.0349,-0.029,-0.0091
+num_tokens,-0.0221,-0.0228,-0.0197,-0.0255,-0.0215,-0.0178

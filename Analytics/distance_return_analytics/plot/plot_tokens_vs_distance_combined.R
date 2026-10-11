@@ -4,6 +4,11 @@
 #
 # Single clean plot: 3 mean lines (one per strategy), direct labels.
 # X = Number of tokens (log scale), Y = Mean L1 distance (%)
+#
+# --layout half: compact version for half the text width (paper Sec. 5,
+# next to the fit table), legend inside the plot instead of direct labels:
+#   Rscript plot_tokens_vs_distance_combined.R --layout half \
+#     --width 3.07 --height 2.0
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -17,7 +22,7 @@ suppressPackageStartupMessages({
 # -----------------------------------------------------------------------------
 # CONSTANTS
 # -----------------------------------------------------------------------------
-DEFAULT_IN_CSV  <- "../data/tokens_vs_dist_agg.csv"
+DEFAULT_IN_CSV  <- "../data/distance_per_block_results/tokens_vs_dist_agg.csv"
 DEFAULT_OUT_PDF <- "../graphics/tokens_vs_distance_combined.pdf"
 
 STRATEGY_LABELS <- c(
@@ -54,11 +59,15 @@ option_list <- list(
   make_option(c("--width"),  type = "double", default = 10,
               help = "Plot width in inches [default: %default]"),
   make_option(c("--height"), type = "double", default = 4,
-              help = "Plot height in inches [default: %default]")
+              help = "Plot height in inches [default: %default]"),
+  make_option(c("--layout"), type = "character", default = "wide",
+              help = "wide (direct labels) or half (inside legend) [default: %default]")
 )
 
 opt <- parse_args(OptionParser(option_list = option_list))
 if (!file.exists(opt$`in-csv`)) stop("Input file not found: ", opt$`in-csv`)
+if (!opt$layout %in% c("wide", "half")) stop("--layout must be wide or half")
+compact <- opt$layout == "half"
 
 # -----------------------------------------------------------------------------
 # LOAD & PROCESS
@@ -90,12 +99,12 @@ cat(sprintf("[info] %d rows, token range %d-%d, %d strategies\n",
 # -----------------------------------------------------------------------------
 # THEME
 # -----------------------------------------------------------------------------
-fintech_theme <- theme_minimal(base_size = 13) +
+fintech_theme <- theme_minimal(base_size = if (compact) 8 else 13) +
   theme(
     plot.title    = element_blank(),
     plot.subtitle = element_blank(),
 
-    axis.title   = element_text(size = 12, color = "grey30"),
+    axis.title   = element_text(size = if (compact) 8 else 12, color = "grey30"),
     axis.text    = element_text(color = "grey30"),
 
     panel.grid.major = element_line(color = "grey92", linetype = "dashed"),
@@ -109,6 +118,23 @@ fintech_theme <- theme_minimal(base_size = 13) +
     plot.margin = margin(10, 80, 10, 10)  # extra right margin for labels
   )
 
+# Half layout: legend in the empty lower-right corner, top-to-bottom in the
+# order of the curves
+if (compact) {
+  fintech_theme <- fintech_theme +
+    theme(
+      legend.position        = "inside",
+      legend.position.inside = c(0.99, 0.03),
+      legend.justification   = c(1, 0),
+      legend.title           = element_blank(),
+      legend.text            = element_text(size = 7, color = "grey20"),
+      legend.key.width       = unit(1.8, "lines"),
+      legend.key.height      = unit(0.75, "lines"),
+      legend.background      = element_rect(fill = "white", color = NA),
+      plot.margin            = margin(4, 6, 2, 2)
+    )
+}
+
 # -----------------------------------------------------------------------------
 # PLOT
 # -----------------------------------------------------------------------------
@@ -118,22 +144,24 @@ p <- ggplot(df, aes(x = num_tokens, y = mean_dist, color = strategy,
                     linetype = strategy)) +
 
   # Mean lines
-  geom_line(linewidth = 1.1) +
+  geom_line(linewidth = if (compact) 0.6 else 1.1) +
 
   # Small dots at each data point
-  geom_point(size = 1.2, alpha = 0.5) +
+  geom_point(size = if (compact) 0.5 else 1.2, alpha = 0.5) +
 
-  # Direct labels at right endpoints of each curve
-  geom_text(
+  # Direct labels at right endpoints of each curve (wide layout only)
+  (if (compact) NULL else geom_text(
     data = label_df,
     aes(label = strategy),
     hjust = 0, nudge_x = 0.03,   # nudge in log-space
     size = 3.8, fontface = "bold",
     show.legend = FALSE
-  ) +
+  )) +
 
-  scale_color_manual(values = STRATEGY_COLORS) +
-  scale_linetype_manual(values = STRATEGY_LINETYPES) +
+  scale_color_manual(values = STRATEGY_COLORS,
+                     guide = guide_legend(reverse = TRUE)) +
+  scale_linetype_manual(values = STRATEGY_LINETYPES,
+                        guide = guide_legend(reverse = TRUE)) +
 
   # x-axis: token count (log scale)
   scale_x_log10(
@@ -145,13 +173,13 @@ p <- ggplot(df, aes(x = num_tokens, y = mean_dist, color = strategy,
   # y-axis: L1 distance (%)
   scale_y_continuous(
     limits = c(0, 100),
-    breaks = seq(0, 100, by = 10),
+    breaks = seq(0, 100, by = if (compact) 20 else 10),
     labels = function(y) paste0(round(y, 0), "%"),
     expand = expansion(mult = c(0.02, 0.02))
   ) +
 
   labs(
-    x = "Number of tokens (log scale)",
+    x = "Number of assets (log scale)",
     y = "Mean distance (%)"
   ) +
 

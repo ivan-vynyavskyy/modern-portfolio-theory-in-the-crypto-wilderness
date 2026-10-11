@@ -2,32 +2,44 @@
 """
 analyze_holders_distribution_by_year.py
 
-Analyze token holder counts over time (from 2020), aggregated by year:
+Analyze token holder counts over time (from --start-year, default 2018), aggregated by year:
   - overall avg/median holders
   - bucket distribution: 0–100, 100–1K, 1K–10K, >10K
   - same metrics by primary_category (optional join)
 
 Input:
-  1) token_inequality_per_block.csv with columns including:
-       date, holders, token_address (or token)
+  1) token_inequality_per_block.csv produced by
+     distribution_of_wealth/src/inequality_measures.py, with columns
+     including date, holders, token_address (or token), token_name.
+     Since the ETH-inclusive run the file also carries one row per
+     snapshot for native ETH (pseudo-token 0xee..ee, token_name 'ETH').
+     ETH is not a token and its holder count (tens of millions) would
+     dominate every average, so it is EXCLUDED by default; pass
+     --include-eth to keep it. The file also carries D-1/D+1 snapshots
+     around a few market events; only first-of-month snapshots are used
+     by default (--all-dates keeps everything).
   2) (optional) token metadata CSV with columns:
        contract_address, primary_category
 
-Outputs (in --out-dir):
-  - overall_yearly_summary.csv
-  - overall_yearly_buckets.csv
-  - category_yearly_summary.csv (if categories provided)
-  - category_yearly_buckets.csv (if categories provided)
-  - plots:
-      overall_bucket_distribution.png
-      overall_avg_holders.png
-      category_bucket_distribution_topK.png (if categories provided)
-      category_avg_holders_topK.png (if categories provided)
+Outputs (in --out-dir, default ../data next to this script; names carry
+--prefix, default 'holders_', which is what generate_all_macros.py reads):
+  - holders_overall_yearly_summary.csv
+  - holders_overall_yearly_buckets.csv
+  - holders_category_yearly_summary.csv (if categories provided)
+  - holders_category_yearly_buckets.csv (if categories provided)
+  No figures are produced; the LaTeX macros derived from the two overall
+  CSVs live in token_holder_counts_macros.py.
 
 Notes:
   - By default, metrics are computed over *snapshot rows* (each token-date row).
   - If you prefer token-level aggregation within each year, use --aggregation token_year
     (mean holders per token within each year, then bucket/average those values).
+  - Duplicate (date, token) rows (possible after --resume runs of the
+    producer) and rows with a non-numeric holders value are dropped.
+
+Usage:
+  python analyze_holders_distribution_by_year.py \\
+      ../../distribution_of_wealth/data/token_inequality_per_block.csv
 """
 
 from __future__ import annotations
@@ -35,19 +47,19 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
-from typing import Optional, List
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
 
 BUCKET_LABELS = ["0–100", "100–1K", "1K–10K", ">10K"]
+ETH_PSEUDO_TOKEN = "0x" + "ee" * 20  # native ETH row in the inequality CSV
+DEFAULT_OUT_DIR = Path(__file__).resolve().parent.parent / "data"
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Analyze holders distribution by year (from 2020), overall and by primary_category."
+        description="Analyze holders distribution by year, overall and by primary_category."
     )
     p.add_argument(
         "csv",
@@ -60,8 +72,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--start-year",
         type=int,
-        default=2020,
-        help="Start year (inclusive). Default: 2020.",
+        default=2018,
+        help="Start year (inclusive). Default: 2018 (the published data files start there).",
     )
     p.add_argument(
         "--min-holders",
@@ -79,20 +91,25 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     p.add_argument(
-        "--top-k-categories",
-        type=int,
-        default=10,
-        help="For category plots: plot only top K categories by row count. Default: 10.",
-    )
-    p.add_argument(
         "--out-dir",
-        default="holders_analysis_out",
-        help="Output directory for CSVs/plots. Default: holders_analysis_out",
+        default=str(DEFAULT_OUT_DIR),
+        help="Output directory for the CSVs. Default: the data/ folder next to this script.",
     )
     p.add_argument(
-        "--no-show",
+        "--prefix",
+        default="holders_",
+        help="Prefix for output file names. Default: 'holders_' (expected by generate_all_macros.py).",
+    )
+    p.add_argument(
+        "--include-eth",
         action="store_true",
-        help="Do not display plots interactively (useful on headless servers).",
+        help="Keep the native-ETH pseudo-token row (0xee..ee / 'ETH'). Excluded by default.",
+    )
+    p.add_argument(
+        "--all-dates",
+        action="store_true",
+        help="Keep every snapshot date. By default only first-of-month snapshots are used, "
+             "dropping the D-1/D+1 event-neighbour snapshots of the producer.",
     )
     return p.parse_args()
 
@@ -111,14 +128,36 @@ def detect_token_col(df: pd.DataFrame) -> str:
     raise KeyError("Expected token address column 'token_address' or 'token'.")
 
 
-def clean_base_df(df: pd.DataFrame, token_col: str) -> pd.DataFrame:
+def clean_base_df(df: pd.DataFrame, token_col: str, include_eth: bool, all_dates: bool) -> pd.DataFrame:
     df = df.copy()
+    n0 = len(df)
 
     df[token_col] = df[token_col].astype(str).str.lower().str.strip()
     df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.normalize()
     df["holders"] = pd.to_numeric(df["holders"], errors="coerce")
 
     df = df.dropna(subset=["date", "holders", token_col]).copy()
+    n_bad = n0 - len(df)
+
+    n_dup = int(df.duplicated(subset=["date", token_col]).sum())
+    df = df.drop_duplicates(subset=["date", token_col], keep="last")
+
+    n_eth = 0
+    if not include_eth:
+        # match on the pseudo-token address only: a real ERC-20 token with the
+        # symbol 'ETH' exists in the universe and must stay in
+        is_eth = df[token_col] == ETH_PSEUDO_TOKEN
+        n_eth = int(is_eth.sum())
+        df = df.loc[~is_eth].copy()
+
+    n_event = 0
+    if not all_dates:
+        keep = df["date"].dt.day == 1
+        n_event = int((~keep).sum())
+        df = df.loc[keep].copy()
+
+    print(f"[info] rows: {n0:,} | dropped: {n_bad:,} unparseable, {n_dup:,} duplicate (date, token), "
+          f"{n_eth:,} native-ETH, {n_event:,} non-monthly snapshot | kept: {len(df):,}")
     return df
 
 
@@ -176,7 +215,7 @@ def yearly_summary(df: pd.DataFrame, token_col: str) -> pd.DataFrame:
 def yearly_buckets_wide(df: pd.DataFrame) -> pd.DataFrame:
     # counts + percentages by year and bucket
     counts = (
-        df.groupby(["year", "holders_bucket"], as_index=False)
+        df.groupby(["year", "holders_bucket"], as_index=False, observed=False)
           .size()
           .rename(columns={"size": "count"})
     )
@@ -244,7 +283,7 @@ def category_yearly_summary(df_cat: pd.DataFrame, token_col: str) -> pd.DataFram
 
 def category_yearly_buckets(df_cat: pd.DataFrame) -> pd.DataFrame:
     counts = (
-        df_cat.groupby(["year", "primary_category", "holders_bucket"], as_index=False)
+        df_cat.groupby(["year", "primary_category", "holders_bucket"], as_index=False, observed=False)
               .size()
               .rename(columns={"size": "count"})
     )
@@ -258,124 +297,6 @@ def category_yearly_buckets(df_cat: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def plot_overall_bucket_distribution(wide: pd.DataFrame, out_path: Path) -> None:
-    years = wide["year"].astype(int).tolist()
-    pct_cols = [f"pct_{b}" for b in BUCKET_LABELS]
-
-    fig, ax = plt.subplots(figsize=(11, 5))
-    bottom = np.zeros(len(years), dtype=float)
-
-    for col, label in zip(pct_cols, BUCKET_LABELS):
-        vals = wide[col].to_numpy(dtype=float)
-        ax.bar(years, vals, bottom=bottom, label=label)
-        bottom += vals
-
-    ax.set_title("Holders bucket distribution by year (percent)", fontsize=14)
-    ax.set_xlabel("Year", fontsize=12)
-    ax.set_ylabel("Percent of observations (%)", fontsize=12)
-    ax.set_xticks(years)
-    ax.grid(True, axis="y", linestyle="--", alpha=0.3)
-    ax.legend(loc="lower left", fontsize=9)
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=200, bbox_inches="tight")
-
-
-def plot_overall_avg_holders(summary: pd.DataFrame, out_path: Path) -> None:
-    fig, ax = plt.subplots(figsize=(11, 5))
-    ax.plot(
-        summary["year"],
-        summary["avg_holders"],
-        linestyle="-",
-        linewidth=2,
-        marker="o",
-        markersize=4,
-        label="Average holders",
-    )
-    ax.plot(
-        summary["year"],
-        summary["median_holders"],
-        linestyle="-",
-        linewidth=2,
-        marker="s",
-        markersize=4,
-        label="Median holders",
-    )
-    ax.set_title("Average / Median holders by year", fontsize=14)
-    ax.set_xlabel("Year", fontsize=12)
-    ax.set_ylabel("Holders", fontsize=12)
-    ax.grid(True, which="both", linestyle="--", alpha=0.3)
-    ax.legend(loc="lower left", fontsize=9)
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=200, bbox_inches="tight")
-
-
-def plot_category_topk_bucket_distribution(
-    df_cat_bucket: pd.DataFrame, top_categories: List[str], out_path: Path
-) -> None:
-    # Plot: for each bucket, line over years for the combined topK categories (separate lines)
-    # To keep it readable: we plot "% in >10K bucket" (often most interesting) + maybe "0–100"
-    # Here: create two plots in one figure is not allowed by your style preference, so do just one:
-    # We'll plot the >10K bucket pct over time for topK categories.
-    target_bucket = ">10K"
-    sub = df_cat_bucket.loc[
-        (df_cat_bucket["primary_category"].isin(top_categories)) &
-        (df_cat_bucket["holders_bucket"] == target_bucket)
-    ].copy()
-
-    if sub.empty:
-        return
-
-    fig, ax = plt.subplots(figsize=(11, 5))
-    for cat in top_categories:
-        s = sub.loc[sub["primary_category"] == cat].sort_values("year")
-        if s.empty:
-            continue
-        ax.plot(
-            s["year"],
-            s["pct"],
-            linestyle="-",
-            linewidth=2,
-            marker="o",
-            markersize=3,
-            label=cat,
-        )
-
-    ax.set_title(f"Share of observations in '{target_bucket}' bucket (top categories)", fontsize=14)
-    ax.set_xlabel("Year", fontsize=12)
-    ax.set_ylabel("Percent within category (%)", fontsize=12)
-    ax.grid(True, which="both", linestyle="--", alpha=0.3)
-    ax.legend(loc="lower left", fontsize=8)
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=200, bbox_inches="tight")
-
-
-def plot_category_topk_avg_holders(
-    df_cat_summary: pd.DataFrame, top_categories: List[str], out_path: Path
-) -> None:
-    fig, ax = plt.subplots(figsize=(11, 5))
-    for cat in top_categories:
-        s = df_cat_summary.loc[df_cat_summary["primary_category"] == cat].sort_values("year")
-        if s.empty:
-            continue
-        ax.plot(
-            s["year"],
-            s["avg_holders"],
-            linestyle="-",
-            linewidth=2,
-            marker="o",
-            markersize=3,
-            label=cat,
-        )
-
-    ax.set_title("Average holders by year (top categories)", fontsize=14)
-    ax.set_xlabel("Year", fontsize=12)
-    ax.set_ylabel("Average holders", fontsize=12)
-    ax.grid(True, which="both", linestyle="--", alpha=0.3)
-    ax.legend(loc="lower left", fontsize=8)
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=200, bbox_inches="tight")
-
-
 def main() -> None:
     args = parse_args()
     out_dir = ensure_out_dir(args.out_dir)
@@ -386,7 +307,7 @@ def main() -> None:
     # Load
     df = pd.read_csv(args.csv, low_memory=False)
     token_col = detect_token_col(df)
-    df = clean_base_df(df, token_col)
+    df = clean_base_df(df, token_col, include_eth=args.include_eth, all_dates=args.all_dates)
     df = filter_from_year(df, args.start_year, args.min_holders)
 
     if df.empty:
@@ -404,18 +325,14 @@ def main() -> None:
     overall_buckets = yearly_buckets_wide(obs)
 
     # Save overall
-    overall_sum_path = out_dir / "overall_yearly_summary.csv"
-    overall_bucket_path = out_dir / "overall_yearly_buckets.csv"
+    px = args.prefix
+    overall_sum_path = out_dir / f"{px}overall_yearly_summary.csv"
+    overall_bucket_path = out_dir / f"{px}overall_yearly_buckets.csv"
     overall_sum.to_csv(overall_sum_path, index=False)
     overall_buckets.to_csv(overall_bucket_path, index=False)
 
     print(f"[ok] Wrote: {overall_sum_path}")
     print(f"[ok] Wrote: {overall_bucket_path}")
-
-    # Plots overall
-    plot_overall_bucket_distribution(overall_buckets, out_dir / "overall_bucket_distribution.png")
-    plot_overall_avg_holders(overall_sum, out_dir / "overall_avg_holders.png")
-    print(f"[ok] Saved plots in: {out_dir}")
 
     # Category join + category summaries (optional)
     if args.categories_csv:
@@ -429,37 +346,15 @@ def main() -> None:
         cat_sum = category_yearly_summary(df_cat, token_col=token_col)
         cat_bucket_long = category_yearly_buckets(df_cat)
 
-        cat_sum_path = out_dir / "category_yearly_summary.csv"
-        cat_bucket_path = out_dir / "category_yearly_buckets.csv"
+        cat_sum_path = out_dir / f"{px}category_yearly_summary.csv"
+        cat_bucket_path = out_dir / f"{px}category_yearly_buckets.csv"
         cat_sum.to_csv(cat_sum_path, index=False)
         cat_bucket_long.to_csv(cat_bucket_path, index=False)
 
         print(f"[ok] Wrote: {cat_sum_path}")
         print(f"[ok] Wrote: {cat_bucket_path}")
-
-        # Determine topK categories by observation count (across all years)
-        cat_counts = (
-            df_cat.groupby("primary_category", as_index=False)
-                  .size()
-                  .rename(columns={"size": "n_obs"})
-                  .sort_values("n_obs", ascending=False)
-        )
-        topk = cat_counts.head(int(args.top_k_categories))["primary_category"].tolist()
-
-        plot_category_topk_bucket_distribution(
-            cat_bucket_long, topk, out_dir / "category_bucket_distribution_topK.png"
-        )
-        plot_category_topk_avg_holders(
-            cat_sum, topk, out_dir / "category_avg_holders_topK.png"
-        )
-        print(f"[ok] Saved category plots (top {len(topk)} categories) in: {out_dir}")
     else:
         print("[warn] --categories-csv not provided, skipping primary_category analysis.")
-
-    if not args.no_show:
-        plt.show()
-    else:
-        plt.close("all")
 
 
 if __name__ == "__main__":

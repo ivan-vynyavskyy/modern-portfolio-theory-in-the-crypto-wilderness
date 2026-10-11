@@ -1,0 +1,213 @@
+Per-block wallet statistics: erc20_only (April 2026) vs eth_incl (Sept 2026), 72 monthly snapshots
+==============================================================================================================
+
+1. Accounts per snapshot (mean over blocks)
+             erc20_only  eth_incl  ratio new/old
+wallet_type                                     
+ALL            20270904  46057757           2.27
+EOA            20078895  45434689           2.26
+CA               192010    623067           3.24
+
+2. Mean / median number of assets and account value (USD), mean of the per-block values
+   (gt1 = accounts worth more than 1 USD; assets = ETH included, ETH/WETH folded)
+wallet_type                          ALL        EOA          CA
+avg_num_tokens erc20_only          1.362      1.365       1.107
+avg_num_tokens eth_incl            1.408      1.409       1.377
+avg_num_tokens Δ                   0.046      0.044       0.270
+med_num_tokens erc20_only          1.000      1.000       1.000
+med_num_tokens eth_incl            1.000      1.000       1.000
+med_num_tokens Δ                   0.000      0.000       0.000
+avg_value_usd erc20_only       28298.320  27937.100  135026.870
+avg_value_usd eth_incl         18068.180  13317.380  363211.970
+avg_value_usd Δ               -10230.150 -14619.720  228185.100
+med_value_usd erc20_only          19.100     19.280       0.030
+med_value_usd eth_incl             9.460      9.540       4.180
+med_value_usd Δ                   -9.640     -9.740       4.150
+avg_num_tokens_gt1 erc20_only      1.467      1.469       1.249
+avg_num_tokens_gt1 eth_incl        1.535      1.534       1.591
+avg_num_tokens_gt1 Δ               0.067      0.066       0.342
+med_num_tokens_gt1 erc20_only      1.000      1.000       1.000
+med_num_tokens_gt1 eth_incl        1.083      1.083       1.000
+med_num_tokens_gt1 Δ               0.083      0.083       0.000
+avg_value_usd_gt1 erc20_only   40169.360  39503.070  355626.580
+avg_value_usd_gt1 eth_incl     24366.920  18016.380  658555.490
+avg_value_usd_gt1 Δ           -15802.440 -21486.690  302928.920
+med_value_usd_gt1 erc20_only      30.050     29.990     173.000
+med_value_usd_gt1 eth_incl        23.410     23.240      65.390
+med_value_usd_gt1 Δ               -6.640     -6.750    -107.620
+
+3. Share of accounts by number of assets, % (per-block share, mean over blocks; bucket 0 in the denominator)
+
+3a. ALL
+wallet_type          ALL
+0 erc20_only        0.08
+0 eth_incl          0.00
+0 Δ                -0.08
+1 erc20_only       83.35
+1 eth_incl         73.50
+1 Δ                -9.85
+2–5 erc20_only     15.11
+2–5 eth_incl       25.59
+2–5 Δ              10.48
+5–10 erc20_only     1.08
+5–10 eth_incl       0.70
+5–10 Δ             -0.38
+10–20 erc20_only    0.30
+10–20 eth_incl      0.16
+10–20 Δ            -0.13
+20–50 erc20_only    0.07
+20–50 eth_incl      0.03
+20–50 Δ            -0.04
+50–100 erc20_only   0.01
+50–100 eth_incl     0.00
+50–100 Δ           -0.00
+>100 erc20_only     0.00
+>100 eth_incl       0.00
+>100 Δ             -0.00
+
+3a. EOA
+wallet_type          EOA
+0 erc20_only        0.08
+0 eth_incl          0.00
+0 Δ                -0.08
+1 erc20_only       83.25
+1 eth_incl         73.36
+1 Δ                -9.89
+2–5 erc20_only     15.20
+2–5 eth_incl       25.73
+2–5 Δ              10.53
+5–10 erc20_only     1.09
+5–10 eth_incl       0.71
+5–10 Δ             -0.38
+10–20 erc20_only    0.30
+10–20 eth_incl      0.16
+10–20 Δ            -0.14
+20–50 erc20_only    0.07
+20–50 eth_incl      0.03
+20–50 Δ            -0.04
+50–100 erc20_only   0.01
+50–100 eth_incl     0.00
+50–100 Δ           -0.00
+>100 erc20_only     0.00
+>100 eth_incl       0.00
+>100 Δ             -0.00
+
+3a. CA
+wallet_type           CA
+0 erc20_only        0.00
+0 eth_incl          0.00
+0 Δ                -0.00
+1 erc20_only       93.42
+1 eth_incl         84.08
+1 Δ                -9.34
+2–5 erc20_only      6.27
+2–5 eth_incl       15.18
+2–5 Δ               8.92
+5–10 erc20_only     0.26
+5–10 eth_incl       0.49
+5–10 Δ              0.23
+10–20 erc20_only    0.04
+10–20 eth_incl      0.14
+10–20 Δ             0.10
+20–50 erc20_only    0.01
+20–50 eth_incl      0.06
+20–50 Δ             0.04
+50–100 erc20_only   0.00
+50–100 eth_incl     0.02
+50–100 Δ            0.02
+>100 erc20_only     0.00
+>100 eth_incl       0.03
+>100 Δ              0.03
+
+3b. Share of total value held by accounts in each asset bucket, %
+
+    ALL
+wallet_type          ALL
+0 erc20_only        0.00
+0 eth_incl          0.00
+0 Δ                 0.00
+1 erc20_only       62.19
+1 eth_incl         26.92
+1 Δ               -35.27
+2–5 erc20_only     20.48
+2–5 eth_incl       52.24
+2–5 Δ              31.76
+5–10 erc20_only     3.06
+5–10 eth_incl       6.44
+5–10 Δ              3.38
+10–20 erc20_only    2.03
+10–20 eth_incl      3.00
+10–20 Δ             0.97
+20–50 erc20_only    2.62
+20–50 eth_incl      3.31
+20–50 Δ             0.69
+50–100 erc20_only   3.24
+50–100 eth_incl     3.08
+50–100 Δ           -0.16
+>100 erc20_only     6.38
+>100 eth_incl       5.01
+>100 Δ             -1.37
+
+    EOA
+wallet_type          EOA
+0 erc20_only        0.00
+0 eth_incl          0.00
+0 Δ                 0.00
+1 erc20_only       62.71
+1 eth_incl         21.28
+1 Δ               -41.43
+2–5 erc20_only     19.78
+2–5 eth_incl       58.12
+2–5 Δ              38.34
+5–10 erc20_only     3.06
+5–10 eth_incl       6.26
+5–10 Δ              3.19
+10–20 erc20_only    2.00
+10–20 eth_incl      2.50
+10–20 Δ             0.50
+20–50 erc20_only    2.65
+20–50 eth_incl      2.98
+20–50 Δ             0.33
+50–100 erc20_only   3.31
+50–100 eth_incl     3.15
+50–100 Δ           -0.15
+>100 erc20_only     6.50
+>100 eth_incl       5.71
+>100 Δ             -0.79
+
+    CA
+wallet_type           CA
+0 erc20_only        0.00
+0 eth_incl          0.00
+0 Δ                 0.00
+1 erc20_only       40.13
+1 eth_incl         42.59
+1 Δ                 2.46
+2–5 erc20_only     50.53
+2–5 eth_incl       34.91
+2–5 Δ             -15.62
+5–10 erc20_only     3.05
+5–10 eth_incl       7.20
+5–10 Δ              4.15
+10–20 erc20_only    5.28
+10–20 eth_incl      4.54
+10–20 Δ            -0.74
+20–50 erc20_only    0.88
+20–50 eth_incl      4.10
+20–50 Δ             3.22
+50–100 erc20_only   0.12
+50–100 eth_incl     3.36
+50–100 Δ            3.24
+>100 erc20_only     0.01
+>100 eth_incl       3.30
+>100 Δ              3.28
+
+4. Value distribution: accounts, share below 1 USD, top-1/5/10 % value shares (no value filter)
+   (no wallet_value_distribution_per_block_erc20_only.csv: the ERC-20-only run did not produce this file; new data only)
+wallet_type               ALL          EOA         CA
+wallets_distinct  46057757.00  45434689.00  623067.00
+zero_value_pct           0.11         0.10       0.36
+below_1usd_pct          28.72        28.46      47.52
+top_1_share_pct         97.96        97.30      99.12
+top_5_share_pct         99.57        99.42      99.93
+top_10_share_pct        99.83        99.77      99.98

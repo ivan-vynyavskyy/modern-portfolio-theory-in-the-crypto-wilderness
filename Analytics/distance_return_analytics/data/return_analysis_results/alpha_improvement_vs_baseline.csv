@@ -1,0 +1,6 @@
+strategy,mean_alpha_improvement,median_alpha_improvement,alpha_win_pct
+better_return,2.7224232904392943e+29,0.0,44.67
+safer_risk,6.490813004540267e+29,0.0,45.48
+max_sharpe,3.7170655776501244e+29,0.00081,52.43
+equal_weight,8.302714482271107e+29,-0.000387,49.0
+mcap_weight,-1752.517305,0.00145,54.7

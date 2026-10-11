@@ -1,0 +1,223 @@
+Wealth distribution: erc20_only (April 2026) vs eth_incl (Sept 2026, beacon deposit contract excluded), 72 common monthly snapshots
+==============================================================================================================
+
+1. Accounts per snapshot (mean over blocks)
+             erc20_only  eth_incl  ratio new/old
+wallet_type                                     
+ALL            20270904  46057757           2.27
+EOA            19702547  45434689           2.31
+CA               568357    623067           1.10
+
+2. Share of accounts by USD value bucket, % (per-block share, mean over blocks)
+
+2a. ALL
+wallet_type            ALL
+0–1 erc20_only       30.37
+0–1 eth_incl         28.72
+0–1 Δ                -1.65
+1–100 erc20_only     48.89
+1–100 eth_incl       53.13
+1–100 Δ               4.24
+100–1K erc20_only    13.80
+100–1K eth_incl      11.60
+100–1K Δ             -2.21
+1K–10K erc20_only     5.02
+1K–10K eth_incl       4.74
+1K–10K Δ             -0.28
+10K–100K erc20_only   1.46
+10K–100K eth_incl     1.44
+10K–100K Δ           -0.01
+>100K erc20_only      0.46
+>100K eth_incl        0.37
+>100K Δ              -0.09
+
+2a. EOA
+wallet_type            EOA
+0–1 erc20_only       29.80
+0–1 eth_incl         28.46
+0–1 Δ                -1.33
+1–100 erc20_only     49.43
+1–100 eth_incl       53.45
+1–100 Δ               4.02
+100–1K erc20_only    13.89
+100–1K eth_incl      11.59
+100–1K Δ             -2.30
+1K–10K erc20_only     5.02
+1K–10K eth_incl       4.72
+1K–10K Δ             -0.30
+10K–100K erc20_only   1.44
+10K–100K eth_incl     1.43
+10K–100K Δ           -0.01
+>100K erc20_only      0.42
+>100K eth_incl        0.35
+>100K Δ              -0.07
+
+2a. CA
+wallet_type             CA
+0–1 erc20_only       51.63
+0–1 eth_incl         47.52
+0–1 Δ                -4.11
+1–100 erc20_only     28.86
+1–100 eth_incl       29.69
+1–100 Δ               0.83
+100–1K erc20_only    10.75
+100–1K eth_incl      11.83
+100–1K Δ              1.08
+1K–10K erc20_only     5.08
+1K–10K eth_incl       6.68
+1K–10K Δ              1.60
+10K–100K erc20_only   2.00
+10K–100K eth_incl     2.49
+10K–100K Δ            0.48
+>100K erc20_only      1.67
+>100K eth_incl        1.80
+>100K Δ               0.13
+
+2b. Share of total value held by the accounts of each bucket, %
+
+    ALL
+wallet_type            ALL
+0–1 erc20_only        0.00
+0–1 eth_incl          0.00
+0–1 Δ                 0.00
+1–100 erc20_only      0.05
+1–100 eth_incl        0.07
+1–100 Δ               0.02
+100–1K erc20_only     0.21
+100–1K eth_incl       0.26
+100–1K Δ              0.06
+1K–10K erc20_only     0.68
+1K–10K eth_incl       1.04
+1K–10K Δ              0.36
+10K–100K erc20_only   2.00
+10K–100K eth_incl     2.83
+10K–100K Δ            0.83
+>100K erc20_only     97.06
+>100K eth_incl       95.80
+>100K Δ              -1.26
+
+    EOA
+wallet_type            EOA
+0–1 erc20_only        0.00
+0–1 eth_incl          0.00
+0–1 Δ                 0.00
+1–100 erc20_only      0.07
+1–100 eth_incl        0.10
+1–100 Δ               0.03
+100–1K erc20_only     0.30
+100–1K eth_incl       0.35
+100–1K Δ              0.05
+1K–10K erc20_only     1.00
+1K–10K eth_incl       1.39
+1K–10K Δ              0.39
+10K–100K erc20_only   2.91
+10K–100K eth_incl     3.77
+10K–100K Δ            0.85
+>100K erc20_only     95.71
+>100K eth_incl       94.39
+>100K Δ              -1.32
+
+    CA
+wallet_type             CA
+0–1 erc20_only        0.00
+0–1 eth_incl          0.00
+0–1 Δ                -0.00
+1–100 erc20_only      0.00
+1–100 eth_incl        0.00
+1–100 Δ              -0.00
+100–1K erc20_only     0.01
+100–1K eth_incl       0.01
+100–1K Δ              0.00
+1K–10K erc20_only     0.06
+1K–10K eth_incl       0.08
+1K–10K Δ              0.02
+10K–100K erc20_only   0.24
+10K–100K eth_incl     0.28
+10K–100K Δ            0.03
+>100K erc20_only     99.68
+>100K eth_incl       99.63
+>100K Δ              -0.05
+
+3. Total value, CA share of value, and total value over DeFiLlama TVL
+                                   erc20_only  eth_incl       Δ
+total value, last snapshot (B USD)   1,326.71  1,640.55  313.84
+total value, peak (B USD)            1,470.77  1,910.17  439.41
+peak date                             2025-10   2025-10     nan
+CA value, last snapshot (B USD)        236.06    269.52   33.45
+CA share of value, mean %               31.80     26.26   -5.54
+CA share of value, min %                17.79     16.43   -1.36
+CA share of value, max %                49.69     38.40  -11.29
+CA share of value, last %               17.79     16.43   -1.36
+total value / TVL, median               16.62     22.45    5.82
+total value / TVL, min                   7.93     12.58    4.64
+total value / TVL, max                  51.60     80.19   28.59
+
+4. Top-share concentration, accounts above 1 USD (top_held_percent_gr_1.csv)
+
+4a. Yearly table, ALL accounts (avg accounts M | top-1 % avg | top-1 % min--max | top-5 % avg | top-10 % avg)
+      accounts M erc20_only  accounts M eth_incl  top1 erc20_only  top1 eth_incl top1 min--max erc20_only top1 min--max eth_incl  top5 erc20_only  top5 eth_incl  top10 erc20_only  top10 eth_incl
+year                                                                                                                                                                                              
+2020                  5.003                9.015            97.25          95.88             96.40--98.80           94.73--96.57            99.37          98.87             99.75           99.50
+2021                 10.025               23.120            97.66          97.37             96.73--98.12           96.40--97.72            99.40          99.34             99.73           99.72
+2022                 14.277               31.743            98.16          97.72             97.91--98.36           97.46--97.91            99.49          99.36             99.73           99.69
+2023                 14.747               34.747            97.79          97.17             97.66--97.91           97.02--97.28            99.51          99.36             99.78           99.75
+2024                 18.646               45.291            98.39          97.69             97.97--98.68           97.33--98.05            99.57          99.47             99.80           99.79
+2025                 21.058               51.320            99.03          98.48             98.69--99.28           98.12--98.79            99.74          99.66             99.87           99.86
+
+4b. Means over all snapshots per wallet type
+wallet_type                            ALL          EOA         CA
+wallets_considered erc20_only  13959243.17  13901225.24   58017.93
+wallets_considered eth_incl    32539466.71  32214253.35  325213.36
+wallets_considered Δ           18580223.54  18313028.11  267195.43
+top_1_share_pct erc20_only           98.05        98.04      93.73
+top_1_share_pct eth_incl             97.38        96.57      97.89
+top_1_share_pct Δ                    -0.66        -1.48       4.16
+top_5_share_pct erc20_only           99.51        99.51      98.50
+top_5_share_pct eth_incl             99.34        99.13      99.81
+top_5_share_pct Δ                    -0.17        -0.38       1.31
+top_10_share_pct erc20_only          99.78        99.77      99.35
+top_10_share_pct eth_incl            99.72        99.63      99.93
+top_10_share_pct Δ                   -0.06        -0.15       0.59
+
+5. Top-1 % and top-0.1 % accounts: CA / EOA split and entry thresholds (means over blocks)
+
+5a. Top 1 %
+                             erc20_only   eth_incl          Δ
+CA % of the top accounts           6.98       4.08      -2.90
+CA % of the top value             32.26      26.78      -5.48
+top value % of all value          98.52      97.96      -0.56
+entry threshold, mean (USD)    30675.39   25486.85   -5188.54
+entry threshold, last (USD)    13554.96   12420.18   -1134.78
+top accounts, last snapshot   373732.00  899850.00  526118.00
+
+5b. Top 0.1 %
+                             erc20_only   eth_incl          Δ
+CA % of the top accounts          18.95      11.90      -7.05
+CA % of the top value             33.70      28.17      -5.52
+top value % of all value          93.45      92.47      -0.98
+entry threshold, mean (USD)   862329.80  572190.89 -290138.91
+entry threshold, last (USD)   492511.00  291997.31 -200513.69
+top accounts, last snapshot    37374.00   89985.00   52611.00
+
+6. Token inequality (token_inequality_per_block.csv)
+   tokens: 4,545 old, 4,541 new (incl. ETH), 4,540 ERC-20 tokens in both
+
+6a. Per-year means across the common ERC-20 tokens (identical ledgers; differences are floating-point noise)
+      holders erc20_only  holders eth_incl  holders Δ  gini erc20_only  gini eth_incl  gini Δ  hhi erc20_only  hhi eth_incl  hhi Δ  top1 erc20_only  top1 eth_incl  top1 Δ  top10 erc20_only  top10 eth_incl  top10 Δ  nakamoto erc20_only  nakamoto eth_incl  nakamoto Δ
+year                                                                                                                                                                                                                                                                     
+2020          27050.0066        27049.9972    -0.0094           0.9496         0.9496     0.0          0.3184        0.3184    0.0           0.4457         0.4457     0.0            0.8074          0.8074      0.0              22.5053            22.5046     -0.0007
+2021          20365.1610        20365.1660     0.0050           0.9558         0.9558    -0.0          0.3131        0.3131   -0.0           0.4493         0.4493     0.0            0.8186          0.8186      0.0              16.7563            16.7562     -0.0002
+2022          19004.8181        19004.8190     0.0009           0.9622         0.9622     0.0          0.3071        0.3071   -0.0           0.4443         0.4443     0.0            0.8176          0.8176     -0.0              12.7688            12.7691      0.0003
+2023          16606.6472        16606.6481     0.0008           0.9560         0.9560     0.0          0.2866        0.2866   -0.0           0.4251         0.4251    -0.0            0.7832          0.7832      0.0              12.0301            12.0298     -0.0003
+2024          13885.2364        13885.2365     0.0001           0.9460         0.9460     0.0          0.2629        0.2629   -0.0           0.4024         0.4024    -0.0            0.7336          0.7336      0.0              11.6242            11.6244      0.0002
+2025          12428.8902        12428.8893    -0.0009           0.9493         0.9493    -0.0          0.2741        0.2741   -0.0           0.4206         0.4206    -0.0            0.7406          0.7406     -0.0               9.5721             9.5722      0.0000
+
+6b. Native ETH (new run only; deposit contract excluded), per-year means
+      holders_M    gini     hhi    top1   top10  nakamoto  supply_M
+year                                                               
+2020    45.9619  0.9979  0.0044  0.0379  0.1567  293.6667  111.2966
+2021    64.4233  0.9969  0.0058  0.0599  0.1686  305.7500  110.6630
+2022    87.6644  0.9961  0.0049  0.0508  0.1600  363.6667  106.4730
+2023   107.3475  0.9965  0.0031  0.0356  0.1316  545.0000   97.6796
+2024   130.0049  0.9965  0.0031  0.0342  0.1336  537.2500   87.3941
+2025   158.5716  0.9969  0.0028  0.0309  0.1290  587.5000   85.3912

@@ -1,0 +1,6 @@
+strategy,win_pct,tie_pct,loss_pct,mean_diff_vs_baseline,median_diff_vs_baseline
+better_return,41.19,16.5,42.31,2.722423290439294e+29,0.0
+safer_risk,41.62,17.59,40.79,6.490813004540264e+29,0.0
+max_sharpe,49.14,0.0,50.86,3.717065577650124e+29,-0.000343
+equal_weight,48.67,0.0,51.33,8.30271448227111e+29,-0.00094
+mcap_weight,57.12,0.0,42.87,-1752.512692,0.000954

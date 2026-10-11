@@ -56,6 +56,13 @@ if (!file.exists(INPUT_FILE)) {
 
 df <- read_csv(INPUT_FILE, show_col_types = FALSE)
 
+# The ETH-inclusive inequality file carries one native-ETH row per snapshot
+# (pseudo-token 0xee..ee, ~10^8 holders). This is a per-token figure, so ETH
+# is dropped, matching token_holder_counts/src/analyze_holders_distribution_by_year.py.
+ETH_PSEUDO_TOKEN <- paste0("0x", strrep("ee", 20))
+token_col <- if ("token_address" %in% names(df)) "token_address" else "token"
+df <- df %>% filter(tolower(.data[[token_col]]) != ETH_PSEUDO_TOKEN)
+
 df_clean <- df %>%
   mutate(
     date = as.Date(date),

@@ -5,9 +5,10 @@ fit_l1_formulas.py
 Description:
     Fit closed-form formula for L1 distance as a function of token
     count. Model: d(n) = c - a * n^{-b}, where c is the asymptotic
-    ceiling (constrained to c <= 100%). Fits on both mean and median,
-    weighted by sqrt(sample_count), via Levenberg-Marquardt with bound
-    constraints.
+    ceiling (constrained to c <= 100%). Fits on both mean and median by
+    bounded non-linear least squares (scipy curve_fit, trust-region
+    reflective); residuals are scaled by sqrt(sample_count), so squared
+    errors are weighted by the count.
 
 Input:
     tokens_vs_dist_agg.csv (strategy, num_tokens, n, mean_dist, median_dist).
@@ -22,7 +23,7 @@ from scipy.optimize import curve_fit
 
 # -----------------------------------------------------------------------------
 # Config
-CSV_IN  = "../data/tokens_vs_dist_agg.csv"
+CSV_IN  = "../data/distance_per_block_results/tokens_vs_dist_agg.csv"
 CSV_OUT = "../data/l1_formula_fits.csv"
 
 MIN_OBS    = 30

@@ -261,3 +261,6 @@ $RECYCLE.BIN/
 .idea/.idea.sln.iml
 
 .claude
+
+# Private GraphSense/Iknaio tag data and its raw inputs (not redistributable)
+Analytics/portfolio_characteristics/distribution_of_wealth/data/top_addresses_0_1_pct_eth_included*.parquet

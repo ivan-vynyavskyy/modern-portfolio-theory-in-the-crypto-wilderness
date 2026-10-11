@@ -26,7 +26,8 @@ suppressPackageStartupMessages({
 # -----------------------------------------------------------------------------
 # CONSTANTS
 # -----------------------------------------------------------------------------
-DEFAULT_IN_CSV  <- "../data/tokens_vs_dist_agg.csv"
+DEFAULT_IN_CSV  <- "../data/distance_per_block_results/tokens_vs_dist_agg.csv"
+DEFAULT_FIT_CSV <- "../data/l1_formula_fits.csv"
 DEFAULT_OUT_PDF <- "../graphics/l1_fit_vs_actual.pdf"
 
 STRATEGY_LABELS <- c(
@@ -41,13 +42,6 @@ STRATEGY_COLORS <- c(
   "Max Sharpe Ratio"        = "#E31A1C"
 )
 
-# Fitted parameters: d(n) = c - a * n^{-b},  c <= 100
-FIT_PARAMS <- list(
-  "better_return" = list(a = 113.19, b = 0.4803, c = 100.00, r2 = 0.9937),
-  "safer_risk"    = list(a = 138.29, b = 0.7774, c =  80.69, r2 = 0.9999),
-  "max_sharpe"    = list(a =  99.36, b = 0.9022, c =  88.62, r2 = 0.9999)
-)
-
 MAX_TOKENS <- 50
 MIN_OBS    <- 30
 
@@ -57,6 +51,8 @@ MIN_OBS    <- 30
 option_list <- list(
   make_option(c("-i", "--in-csv"), type = "character", default = DEFAULT_IN_CSV,
               help = "Input aggregated CSV [default: %default]"),
+  make_option(c("--fit-csv"), type = "character", default = DEFAULT_FIT_CSV,
+              help = "Fitted parameters from fit_l1_formulas.py [default: %default]"),
   make_option(c("-o", "--out-pdf"), type = "character", default = DEFAULT_OUT_PDF,
               help = "Output PDF path [default: %default]"),
   make_option(c("--width"),  type = "double", default = 12,
@@ -67,6 +63,16 @@ option_list <- list(
 
 opt <- parse_args(OptionParser(option_list = option_list))
 if (!file.exists(opt$`in-csv`)) stop("Input file not found: ", opt$`in-csv`)
+if (!file.exists(opt$`fit-csv`)) stop("Fit file not found: ", opt$`fit-csv`)
+
+# Fitted parameters on the mean: d(n) = c - a * n^{-b},  c <= 100
+fits <- read.csv(opt$`fit-csv`, stringsAsFactors = FALSE)
+fits <- fits[fits$statistic == "mean", ]
+FIT_PARAMS <- setNames(
+  lapply(seq_len(nrow(fits)), function(i)
+    list(a = fits$a[i], b = fits$b[i], c = fits$c[i], r2 = fits$r2[i])),
+  fits$strategy
+)
 
 
 script_dir <- (function() {
@@ -107,7 +113,7 @@ fit_df <- bind_rows(lapply(names(FIT_PARAMS), function(s) {
   data.frame(
     num_tokens  = n_seq,
     fitted_dist = p$c - p$a * n_seq^(-p$b),
-    strategy    = factor(STRATEGY_LABELS[s], levels = STRATEGY_LABELS),
+    strategy    = factor(unname(STRATEGY_LABELS[s]), levels = STRATEGY_LABELS),
     r2          = p$r2,
     asymptote   = p$c
   )
@@ -231,11 +237,11 @@ p <- ggplot() +
   ) +
 
   labs(
-    x = "Number of tokens (log scale)",
+    x = "Number of assets (log scale)",
     y = "Mean L1 distance (%)",
     caption = expression(paste(
       "Dashed: fitted  ", d(n) == c - a %.% n^{-b},
-      ",   c \u2264 100%;   dotted: asymptote c"
+      ",   ", c <= 100 * "%", ";   dotted: asymptote c"
     ))
   ) +
 

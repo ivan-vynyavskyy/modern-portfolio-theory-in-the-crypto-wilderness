@@ -9,6 +9,11 @@ Description:
     Results are appended per block, so the script is restart-safe on very
     large parquet inputs.
 
+Exclusion:
+    The beacon deposit contract (0x00000000219ab540356cbb839cbe05303d7705fa)
+    is dropped before any aggregation: it custodies all staked ETH for
+    validators and is not an account's wealth.
+
 Input:
     - Parquet file with columns: block_number, wallet_address,
       total_value_usd (passed via --parquet).
@@ -38,14 +43,38 @@ from typing import List
 import duckdb
 import pandas as pd
 
+# The beacon-chain deposit contract holds every ETH ever staked (73 M ETH by
+# December 2025) on behalf of validators whose claims live on the consensus
+# layer. That is custody, not an account's wealth, so the address is excluded
+# as an ETH holder from every value-based statistic. Token universe unchanged.
+BEACON_DEPOSIT_CONTRACT = "0x00000000219ab540356cbb839cbe05303d7705fa"
 
+
+# All 72 monthly snapshots 2020-01 .. 2025-12 (was: only the last 36).
 DEFAULT_BLOCKS = [
-    16308190, 16530248, 16730072, 16950603, 17162287, 17382266, 17595510, 17816434,
-    18037988, 18251965, 18473543, 18687851, 18908895, 19129889, 19336607, 19557289,
-    19771560, 19993250, 20207949, 20429973, 20651994, 20866919, 21089069, 21303934,
-    21525891, 21747950, 21948292, 22170335, 22385294, 22606143, 22820674, 23042514,
-    23264566, 23479244, 23700767, 23914921
+    9193266, 9393154, 9581792, 9782602, 9976964, 10176690, 10370274, 10570485,
+    10771925, 10966874, 11167817, 11363270, 11565019, 11766939, 11948960,
+    12150245, 12344945, 12545219, 12738509, 12936340, 13136427, 13330090,
+    13527859, 13717847, 13916166, 14116761, 14297759, 14497034, 14688630,
+    14881677, 15053226, 15253306, 15449618, 15649595, 15871480, 16086234,
+    16308190, 16530248, 16730072, 16950603, 17162287, 17382266, 17595510,
+    17816434, 18037988, 18251965, 18473543, 18687851, 18908895, 19129889,
+    19336607, 19557289, 19771560, 19993250, 20207949, 20429973, 20651994,
+    20866919, 21089069, 21303934, 21525891, 21747950, 21948292, 22170335,
+    22385294, 22606143, 22820674, 23042514, 23264566, 23479244, 23700767,
+    23914921
 ]
+
+
+def parquet_scan_target(path: str | Path) -> str:
+    """Accept either a single parquet file or a 4_2-style hive root
+    (block_number=N/ subdirs, block_number NOT in file bodies). For a
+    directory, return a glob the queries read with hive_partitioning=1
+    so block_number materializes from the directory names."""
+    p = Path(path)
+    if p.is_dir():
+        return str(p.resolve() / "*" / "*.parquet")
+    return str(p.resolve())
 
 
 BUCKET_CASE_SQL = """
@@ -132,9 +161,10 @@ def analyze_one_block(
         block_number AS block,
         lower(trim(wallet_address)) AS wallet_address_norm,
         GREATEST(COALESCE(TRY_CAST(total_value_usd AS DOUBLE), 0.0), 0.0) AS v
-      FROM read_parquet(?)
+      FROM read_parquet(?, hive_partitioning=1)
       WHERE block_number = ?
         AND wallet_address IS NOT NULL
+        AND lower(trim(wallet_address)) <> '{BEACON_DEPOSIT_CONTRACT}'
     ),
     typed AS (
       SELECT
@@ -207,7 +237,7 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    parquet_path = str(Path(args.parquet).resolve())
+    parquet_path = parquet_scan_target(args.parquet)
     ca_path = str(Path(args.ca_tsv).resolve())
     out_path = Path(args.out).resolve()
 

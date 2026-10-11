@@ -32,7 +32,7 @@ suppressPackageStartupMessages({
 
 option_list <- list(
   make_option("--in-csv",  type = "character",
-              default = "../data/excess_return_quantiles_per_block.csv"),
+              default = "../data/return_analysis_results/excess_return_quantiles_per_block.csv"),
   make_option("--out-dir", type = "character",
               default = "../graphics"),
   make_option("--agg",     type = "character", default = "median",
@@ -118,7 +118,7 @@ base_theme <- theme_minimal(base_size = FONT_BASE) +
 METRIC_CFG <- list(
   excess_return = list(
     out_name = "quantile_box_excess_return.pdf",
-    y_label  = "Excess return, wallet minus market (%)"
+    y_label  = "Excess return, account minus market (%)"
   ),
   alpha = list(
       out_name = "quantile_box_alpha.pdf",

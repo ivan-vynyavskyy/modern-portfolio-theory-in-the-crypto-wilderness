@@ -1,0 +1,4 @@
+target,R2,Adj_R2,F_stat,F_pvalue
+better_return,0.0466,0.0466,162868.57,0.0
+safer_risk,0.0676,0.0676,241535.39,0.0
+max_sharpe,0.0618,0.0618,219749.02,0.0

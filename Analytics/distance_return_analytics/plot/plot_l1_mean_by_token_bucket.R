@@ -29,7 +29,7 @@ suppressPackageStartupMessages({
 # -----------------------------------------------------------------------------
 # CONSTANTS
 # -----------------------------------------------------------------------------
-DEFAULT_IN_CSV  <- "../data/per_block_distance_by_token_bucket.csv"
+DEFAULT_IN_CSV  <- "../data/distance_per_block_results/per_block_distance_by_token_bucket.csv"
 DEFAULT_OUT_PDF <- "../graphics/l1_mean_by_token_bucket.pdf"
 
 # Ordered bucket levels (natural portfolio-size order)
@@ -41,8 +41,8 @@ BUCKET_LABELS <- c(
   "3"     = "3",
   "4"     = "4",
   "5"     = "5",
-  "6-10"  = "6\u201310",
-  "11-20" = "11\u201320",
+  "6-10"  = "6-10",
+  "11-20" = "11-20",
   "21+"   = "21+"
 )
 
@@ -218,7 +218,7 @@ build_panel <- function(data, stats, panel_title) {
 
     guides(color = guide_legend(
       nrow = 1,
-      title = "Tokens held",
+      title = "Assets held",
       title.position = "top"
     )) +
 

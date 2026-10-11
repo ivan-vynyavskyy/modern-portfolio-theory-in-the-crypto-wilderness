@@ -4,8 +4,11 @@
 #
 # Description:
 #   Grouped horizontal bar chart of Random Forest feature importances
-#   for the three MPT optimisation strategies. Data is embedded from
-#   SLURM output (no input file needed).
+#   for the three MPT optimisation strategies (impurity importance of the
+#   distance models in mpt_distance_analysis.py).
+#
+# Input:
+#   random_forest_importance.csv (feature, importance, target, ...).
 #
 # Output:
 #   Single PDF (default: ../graphics/rf_feature_importance.pdf).
@@ -21,6 +24,7 @@ suppressPackageStartupMessages({
 # -----------------------------------------------------------------------------
 # CONSTANTS
 # -----------------------------------------------------------------------------
+DEFAULT_IN_CSV  <- "../data/distance_analysis_results/random_forest_importance.csv"
 DEFAULT_OUT_PDF <- "../graphics/rf_feature_importance.pdf"
 
 # Strategy colours (Brewer Paired subset)
@@ -30,23 +34,15 @@ STRATEGY_COLORS <- c(
   "Min Variance (Same Ret)" = "#33A02C"
 )
 
-# Embedded data from SLURM output
-IMPORTANCE_DATA <- tribble(
-  ~strategy,                  ~feature,          ~importance,
-  "Max Return (Same Vol)",    "log_value_usd",   0.4492,
-  "Max Return (Same Vol)",    "month",           0.2813,
-  "Max Return (Same Vol)",    "num_tokens",      0.2695,
-  "Min Variance (Same Ret)",  "num_tokens",      0.9547,
-  "Min Variance (Same Ret)",  "log_value_usd",   0.0282,
-  "Min Variance (Same Ret)",  "month",           0.0170,
-  "Max Sharpe Ratio",         "log_value_usd",   0.4446,
-  "Max Sharpe Ratio",         "num_tokens",      0.3080,
-  "Max Sharpe Ratio",         "month",           0.2474
+STRATEGY_LABELS <- c(
+  "better_return" = "Max Return (Same Vol)",
+  "safer_risk"    = "Min Variance (Same Ret)",
+  "max_sharpe"    = "Max Sharpe Ratio"
 )
 
 # Human-readable feature labels
 FEATURE_LABELS <- c(
-  "num_tokens"    = "Token count",
+  "num_tokens"    = "Asset count",
   "log_value_usd" = "Log portfolio value",
   "month"         = "Calendar month"
 )
@@ -55,6 +51,8 @@ FEATURE_LABELS <- c(
 # CLI
 # -----------------------------------------------------------------------------
 option_list <- list(
+  make_option(c("-i", "--in-csv"), type = "character", default = DEFAULT_IN_CSV,
+              help = "Input random_forest_importance.csv [default: %default]"),
   make_option(c("-o", "--out-pdf"), type = "character", default = DEFAULT_OUT_PDF,
               help = "Output PDF path [default: %default]"),
   make_option(c("--width"),  type = "double", default = 10,
@@ -64,6 +62,7 @@ option_list <- list(
 )
 
 opt <- parse_args(OptionParser(option_list = option_list))
+if (!file.exists(opt$`in-csv`)) stop("Input file not found: ", opt$`in-csv`)
 
 
 script_dir <- (function() {
@@ -82,7 +81,8 @@ opt$width <- apply_plot_theme_fonts(opt$width)
 # -----------------------------------------------------------------------------
 cat("[info] Preparing data...\n")
 
-df <- IMPORTANCE_DATA %>%
+df <- read.csv(opt$`in-csv`, stringsAsFactors = FALSE) %>%
+  transmute(strategy = STRATEGY_LABELS[target], feature, importance) %>%
   mutate(
     feature_label = factor(FEATURE_LABELS[feature],
                            levels = rev(FEATURE_LABELS)),

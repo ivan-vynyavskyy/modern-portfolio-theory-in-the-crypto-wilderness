@@ -12,6 +12,11 @@ Description:
     snapshot. Output CSV names include the percentile, e.g.
     top_1_pct_ca_eoa_breakdown.csv for --top-pct 1.
 
+Exclusion:
+    The beacon deposit contract (0x00000000219ab540356cbb839cbe05303d7705fa)
+    is dropped before any aggregation: it custodies all staked ETH for
+    validators and is not an account's wealth.
+
 Input:
     - Parquet with block_number, wallet_address, total_value_usd
       (--parquet).
@@ -43,10 +48,27 @@ import duckdb
 import numpy as np
 import pandas as pd
 
+# The beacon-chain deposit contract holds every ETH ever staked (73 M ETH by
+# December 2025) on behalf of validators whose claims live on the consensus
+# layer. That is custody, not an account's wealth, so the address is excluded
+# as an ETH holder from every value-based statistic. Token universe unchanged.
+BEACON_DEPOSIT_CONTRACT = "0x00000000219ab540356cbb839cbe05303d7705fa"
+
 
 # -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------
+
+def parquet_scan_target(path: str | Path) -> str:
+    """Accept either a single parquet file or a 4_2-style hive root
+    (block_number=N/ subdirs, block_number NOT in file bodies). For a
+    directory, return a glob the queries read with hive_partitioning=1
+    so block_number materializes from the directory names."""
+    p = Path(path)
+    if p.is_dir():
+        return str(p.resolve() / "*" / "*.parquet")
+    return str(p.resolve())
+
 
 def _format_pct_tag(pct: float) -> str:
     """Format a percentile into a filename-safe tag, e.g. 1 -> '1', 0.5 -> '0_5'."""
@@ -88,7 +110,8 @@ def get_duck(threads: int, mem: str) -> duckdb.DuckDBPyConnection:
 
 def get_blocks(con: duckdb.DuckDBPyConnection, parquet: str) -> List[int]:
     rows = con.execute(
-        "SELECT DISTINCT block_number::BIGINT AS b FROM read_parquet(?) ORDER BY b",
+        "SELECT DISTINCT block_number::BIGINT AS b "
+        "FROM read_parquet(?, hive_partitioning=1) ORDER BY b",
         [parquet],
     ).fetchall()
     return [int(r[0]) for r in rows]
@@ -137,7 +160,7 @@ def main():
                     help="Percentile cutoff (default 1 = top 1%%).")
     args = ap.parse_args()
 
-    parquet = str(Path(args.parquet).resolve())
+    parquet = parquet_scan_target(args.parquet)
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -163,12 +186,13 @@ def main():
 
     print(f"[info] blocks: {len(blocks):,}  top_pct: {args.top_pct}%")
 
-    q = """
+    q = f"""
     SELECT
       wallet_address,
       COALESCE(TRY_CAST(total_value_usd AS DOUBLE), 0.0) AS total_value_usd
-    FROM read_parquet(?)
+    FROM read_parquet(?, hive_partitioning=1)
     WHERE block_number = ?
+      AND lower(trim(wallet_address)) <> '{BEACON_DEPOSIT_CONTRACT}'
     """
 
     cutoff_frac = 1.0 - args.top_pct / 100.0
@@ -183,10 +207,11 @@ def main():
             print("[warn] no rows")
             continue
 
-        df["wallet_norm"] = df["wallet_address"].map(normalize_address)
-        df["wallet_type"] = df["wallet_norm"].apply(
-            lambda a: "CA" if a in ca_set else "EOA"
-        )
+        # Vectorized: this frame holds EVERY row of the block (post-ETH:
+        # tens of millions), where per-row Python lambdas cost minutes per
+        # block. 4_0 already writes lowercase 0x-prefixed addresses.
+        df["wallet_norm"] = df["wallet_address"].astype(str).str.strip().str.lower()
+        df["wallet_type"] = np.where(df["wallet_norm"].isin(ca_set), "CA", "EOA")
 
         value_all = float(df["total_value_usd"].sum())
         n_all = len(df)
