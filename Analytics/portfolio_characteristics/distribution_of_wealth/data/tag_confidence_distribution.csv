@@ -1,0 +1,49 @@
+table,key,count,pct
+tag_rows_by_confidence,service_data,79169.0,48.6072
+tag_rows_by_confidence,heuristic,38453.0,23.6089
+tag_rows_by_confidence,web_crawl,18671.0,11.4634
+tag_rows_by_confidence,trusted_provider,15936.0,9.7842
+tag_rows_by_confidence,ledger_immanent,6814.0,4.1836
+tag_rows_by_confidence,service_api,1867.0,1.1463
+tag_rows_by_confidence,forensic,1119.0,0.687
+tag_rows_by_confidence,untrusted_transaction,324.0,0.1989
+tag_rows_by_confidence,manual_transaction,303.0,0.186
+tag_rows_by_confidence,authority_data,138.0,0.0847
+tag_rows_by_confidence,unknown,60.0,0.0368
+tag_rows_by_confidence,forensic_investigation,10.0,0.0061
+tag_rows_by_confidence,override,8.0,0.0049
+tag_rows_by_confidence,ownership,3.0,0.0018
+tag_rows_by_tag_type,actor,151245.0,92.8596
+tag_rows_by_tag_type,attribute,6241.0,3.8318
+tag_rows_by_tag_type,mention,5389.0,3.3087
+tag_rows_by_creator,Dune Analytics,78858.0,48.4163
+tag_rows_by_creator,GraphSense Core Team,34607.0,21.2476
+tag_rows_by_creator,Iknaio,28157.0,17.2875
+tag_rows_by_creator,Iknaio Core Team,12609.0,7.7415
+tag_rows_by_creator,Byron Labs - Vysion,4105.0,2.5203
+tag_rows_by_creator,Iknaio research,1820.0,1.1174
+tag_rows_by_creator,CFLW Cyber Strategies,1284.0,0.7883
+tag_rows_by_creator,CSH CryptoFinance Team,479.0,0.2941
+tag_rows_by_creator,Chainlabs.ai,299.0,0.1836
+tag_rows_by_creator,GraphSense Core team,153.0,0.0939
+tag_rows_by_creator,Merlin Team,152.0,0.0933
+tag_rows_by_creator,CSH,88.0,0.054
+tag_rows_by_creator,"Sebastian Luzian, GraphSense Core Team",79.0,0.0485
+tag_rows_by_creator,INTERPOL CNTL,54.0,0.0332
+tag_rows_by_creator,cybersec-code & GraphSense Core Team,48.0,0.0295
+tag_rows_by_creator,The Graphsense Community,31.0,0.019
+tag_rows_by_creator,Trusted data provider,29.0,0.0178
+tag_rows_by_creator,iknaio,16.0,0.0098
+tag_rows_by_creator,ZachXBT,4.0,0.0025
+tag_rows_by_creator,Government Whitelist Provider,3.0,0.0018
+tagged_addresses_by_best_confidence_level,5,14.0,0.0232
+tagged_addresses_by_best_confidence_level,10,18189.0,30.1587
+tagged_addresses_by_best_confidence_level,20,3186.0,5.2826
+tagged_addresses_by_best_confidence_level,40,51.0,0.0846
+tagged_addresses_by_best_confidence_level,50,32635.0,54.1112
+tagged_addresses_by_best_confidence_level,60,31.0,0.0514
+tagged_addresses_by_best_confidence_level,70,85.0,0.1409
+tagged_addresses_by_best_confidence_level,90,188.0,0.3117
+tagged_addresses_by_best_confidence_level,100,5932.0,9.8357
+tagged_addresses,n_tags_median,1.0,
+tagged_addresses,n_tags_mean,2.7,

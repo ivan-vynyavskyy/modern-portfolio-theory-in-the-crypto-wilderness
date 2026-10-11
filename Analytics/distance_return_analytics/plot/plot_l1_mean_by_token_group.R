@@ -27,17 +27,17 @@ suppressPackageStartupMessages({
 # -----------------------------------------------------------------------------
 # CONSTANTS
 # -----------------------------------------------------------------------------
-DEFAULT_IN_CSV  <- "../data/per_block_distance_by_token_group.csv"
+DEFAULT_IN_CSV  <- "../data/distance_per_block_results/per_block_distance_by_token_group.csv"
 DEFAULT_OUT_PDF <- "../graphics/l1_mean_by_token_group.pdf"
 
 GROUP_COLORS <- c(
-  "< 5 tokens"  = "#FF7F00",
-  ">= 5 tokens" = "#1F78B4"
+  "< 5 assets"  = "#FF7F00",
+  ">= 5 assets" = "#1F78B4"
 )
 
 GROUP_DISPLAY <- c(
-  "lt5"  = "< 5 tokens",
-  "gte5" = ">= 5 tokens"
+  "lt5"  = "< 5 assets",
+  "gte5" = ">= 5 assets"
 )
 
 # Strategy display names and panel order

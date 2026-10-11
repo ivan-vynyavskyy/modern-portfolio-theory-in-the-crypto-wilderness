@@ -1,0 +1,7 @@
+mpt_strategy,naive_strategy,mean_delta_l1,median_delta_l1,pct_moved_closer,pct_moved_farther,pct_unchanged
+better_return,equal_weight,-0.020366,0.0,16.988452,12.000085,71.011462
+better_return,mcap_weight,0.024023,0.0,14.921336,15.804017,69.274647
+safer_risk,equal_weight,-0.041163,0.0,16.090249,5.708369,78.201382
+safer_risk,mcap_weight,0.008709,0.0,10.158576,11.770932,78.070491
+max_sharpe,equal_weight,0.07753,0.0,24.98123,40.839602,34.179168
+max_sharpe,mcap_weight,0.063679,0.0,39.52235,43.129542,17.348108

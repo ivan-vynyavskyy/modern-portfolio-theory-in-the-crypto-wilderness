@@ -179,7 +179,7 @@ p <- ggplot() +
     labels = function(x) paste0(x, "%"),
     sec.axis = sec_axis(
       ~ (. - offset) / scale_factor,
-      name   = "wETH price — 60-day moving avg (USD)",
+      name   = "wETH price, 60-day moving avg (USD)",
       labels = dollar_format(prefix = "$", big.mark = ",")
     )
   ) +

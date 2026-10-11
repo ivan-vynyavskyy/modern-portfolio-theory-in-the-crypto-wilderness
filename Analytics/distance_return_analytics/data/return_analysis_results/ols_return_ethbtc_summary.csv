@@ -1,0 +1,7 @@
+target,R2,Adj_R2,F_stat,F_pvalue
+baseline,0.01,0.01,20084.1,0.0
+better_return,0.0145,0.0145,29389.05,0.0
+safer_risk,0.0136,0.0136,27583.22,0.0
+max_sharpe,0.0175,0.0175,35456.81,0.0
+equal_weight,0.0233,0.0233,47563.72,0.0
+mcap_weight,0.0026,0.0026,5225.59,0.0

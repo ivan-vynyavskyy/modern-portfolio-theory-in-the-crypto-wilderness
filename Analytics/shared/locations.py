@@ -26,6 +26,14 @@ class Location:
     BLOCK_TO_DATE_CSV = DATASETS_DIR / "blocks_closest_to_midnight.csv"
     WHITELIST_ADDRESSES_PARQUET = DATASETS_DIR / "whitelist_unique_addresses.parquet"
     CA_CREATION_TSV = DATASETS_DIR / "contract_accounts_created.tsv"
+    # CAs that also appear in the whitelisted ledgers (written by
+    # accounts_overview/src/count_accounts_eoa_vs_ca.py; read by the
+    # distribution_of_wealth and portfolio_size scripts via --ca-tsv)
+    CA_IN_DATASET_TSV = DATASETS_DIR / "contract_accounts_in_dataset.tsv"
+
+    # ---- Reconstructed holdings (4_2 hive root) and its snapshot manifest ----
+    RECON_HOLDINGS_ROOT = DATA_ROOT / "recon-eth-erc20-partitioned"
+    RECON_MANIFEST_CSV = RECON_HOLDINGS_ROOT / "_manifest.csv"
 
     # ---- Raw transfer data (accounts_overview notebooks) ---------------------
     ETH_TRANSFERS_DATA = DATA_ROOT / "eth-erc20-transfers-20251208-structured"

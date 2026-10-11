@@ -3,13 +3,16 @@
 # plot_mpt_vs_naive.R
 #
 # Description:
-#   Two-panel figure comparing MPT-optimised vs equal-weight portfolios:
+#   Two-panel figure comparing MPT-optimised vs naive portfolios:
 #     Left  - Stacked horizontal bar (closer / farther / unchanged %).
-#     Right - Lollipop chart of mean delta-L1 (green = improvement,
-#             orange = worsening).
+#     Right - Lollipop chart of the mean change in distance, in pp of the
+#             0-100 distance scale (raw L1 delta * 50; green = closer,
+#             orange = farther).
 #
 # Input:
-#   CSV with columns: strategy, direction summary, mean delta-L1.
+#   mpt_vs_naive_direction_overall.csv of analyze_extended_capm.py
+#   (mpt_strategy, naive_strategy, mean_delta_l1, pct_moved_closer,
+#   pct_moved_farther, pct_unchanged).
 #
 # Output:
 #   Single PDF (default: ../graphics/mpt_vs_naive.pdf).
@@ -27,6 +30,9 @@ suppressPackageStartupMessages({
 # CLI
 # -----------------------------------------------------------------------------
 option_list <- list(
+  make_option(c("-i", "--in-csv"), type = "character",
+              default = "../data/camp_analysis_results_full/mpt_vs_naive_direction_overall.csv",
+              help = "Input CSV [default: %default]"),
   make_option(c("-o", "--out-pdf"), type = "character",
               default = "../graphics/mpt_vs_naive.pdf",
               help = "Output PDF path [default: %default]"),
@@ -36,6 +42,7 @@ option_list <- list(
               help = "Plot height in inches [default: %default]")
 )
 opt <- parse_args(OptionParser(option_list = option_list))
+if (!file.exists(opt$`in-csv`)) stop("Input file not found: ", opt$`in-csv`)
 
 
 script_dir <- (function() {
@@ -51,17 +58,23 @@ source(file.path(script_dir, "..", "..", "shared", "plot_theme.R"))
 opt$width <- apply_plot_theme_fonts(opt$width)
 
 # -----------------------------------------------------------------------------
-# DATA (from analysis results, aligned with Table 11)
+# DATA (overall direction table, same numbers as the paper's MPT-vs-naive table, tab:mpt_vs_naive)
 # -----------------------------------------------------------------------------
+MPT_LABELS   <- c(better_return = "MaxRet", safer_risk = "MinVar", max_sharpe = "MaxSR")
+NAIVE_LABELS <- c(equal_weight = "Equal-wt", mcap_weight = "MCap-wt")
+raw <- read.csv(opt$`in-csv`, stringsAsFactors = FALSE)
 df <- data.frame(
-  mpt      = c("MaxRet", "MinVar", "MaxSR",  "MaxRet", "MinVar", "MaxSR"),
-  naive    = c("Equal-wt","Equal-wt","Equal-wt","MCap-wt","MCap-wt","MCap-wt"),
-  closer   = c(32.9, 27.4, 10.2,  22.7, 18.8, 29.8),
-  farther  = c(20.1,  9.1, 50.8,  37.1, 17.9, 52.0),
-  unchanged= c(46.9, 63.5, 39.1,  39.9, 63.0, 17.9),
-  mean_dl1 = c(-0.042, -0.074, +0.173,  +0.130, -0.008, +0.205),
+  mpt       = unname(MPT_LABELS[raw$mpt_strategy]),
+  naive     = unname(NAIVE_LABELS[raw$naive_strategy]),
+  closer    = raw$pct_moved_closer,
+  farther   = raw$pct_moved_farther,
+  unchanged = raw$pct_unchanged,
+  # raw L1 (0-2) delta -> pp of the 0-100 distance scale d = L1 / 2 * 100
+  mean_dl1  = raw$mean_delta_l1 * 50,
   stringsAsFactors = FALSE
 )
+# Equal-weight block first, MaxRet / MinVar / MaxSR within each block
+df <- df[order(match(df$naive, NAIVE_LABELS), match(df$mpt, MPT_LABELS)), ]
 
 # Row label: "MaxRet · Equal-wt" etc
 df$label <- paste0(df$mpt, " \u00b7 ", df$naive)
@@ -140,6 +153,9 @@ p_left <- ggplot(bar_df, aes(x = pct, y = label, fill = category)) +
 # Separator line position (between equal-wt and mcap-wt groups)
 sep_y <- 3.5
 
+# Symmetric x axis with room for the value labels
+x_lim <- max(abs(df$mean_dl1)) * 1.6
+
 p_right <- ggplot(df, aes(x = mean_dl1, y = label)) +
 
   # Dashed separator between benchmark groups
@@ -160,7 +176,7 @@ p_right <- ggplot(df, aes(x = mean_dl1, y = label)) +
 
   # Value labels
   geom_text(
-    aes(label = sprintf("%+.3f", mean_dl1),
+    aes(label = sprintf("%+.2f", mean_dl1),
         hjust = ifelse(mean_dl1 >= 0, -0.3, 1.3)),
     size = 3.2, color = "grey30", fontface = "bold"
   ) +
@@ -168,13 +184,13 @@ p_right <- ggplot(df, aes(x = mean_dl1, y = label)) +
   scale_color_manual(values = DOT_COLORS) +
 
   scale_x_continuous(
-    limits = c(-0.25, 0.30),
-    breaks = seq(-0.20, 0.20, by = 0.10),
-    labels = function(x) sprintf("%+.1f", x),
+    limits = c(-1, 1) * x_lim,
+    breaks = scales::breaks_pretty(n = 5),
+    labels = function(x) ifelse(x == 0, "0", sprintf("%+.0f", x)),
     expand = expansion(mult = c(0.05, 0.05))
   ) +
 
-  labs(title = expression(paste("Mean  ", Delta, L[1], "  (symmetric axis)"))) +
+  labs(title = "Mean change in distance (pp)") +
 
   fintech_theme +
   theme(

@@ -23,7 +23,7 @@ suppressPackageStartupMessages({
 
 option_list <- list(
   make_option("--in-csv",  type = "character",
-              default = "../data/rf_shap_values_baseline.csv"),
+              default = "../data/rf_shap_results/rf_shap_values_baseline.csv"),
   make_option("--out-pdf", type = "character", default = "../graphics/shap_summary_baseline.pdf"),
   make_option("--width",   type = "double", default = 10),
   make_option("--height",  type = "double", default = 4.5)
@@ -46,8 +46,8 @@ df <- read.csv(opts$`in-csv`)
 
 features <- c("month", "log_value_usd", "num_tokens",
               "beta_baseline", "holds_eth", "holds_btc")
-feat_display <- c("Entry month", "Log portfolio value", "Token count",
-                  "Portfolio beta", "Holds ETH wrapper", "Holds BTC wrapper")
+feat_display <- c("Snapshot month", "Log portfolio value", "Asset count",
+                  "Portfolio beta", "Holds ETH", "Holds BTC wrapper")
 
 # Reshape to long
 shap_long <- data.frame()
@@ -62,11 +62,19 @@ for (i in seq_along(features)) {
   shap_long <- rbind(shap_long, tmp)
 }
 
-# Normalise feature values to [0, 1] per feature for colour
+# Normalise feature values to [0, 1] per feature for colour, clipped to the
+# 5th-95th percentile as in the shap library (one beta of -48 otherwise pushes
+# every other beta to the top of the scale); binary features keep min-max.
 shap_long <- shap_long %>%
   group_by(feature) %>%
-  mutate(feat_norm = (feat_value - min(feat_value, na.rm = TRUE)) /
-           max(1e-12, max(feat_value, na.rm = TRUE) - min(feat_value, na.rm = TRUE))) %>%
+  mutate(
+    q_lo = quantile(feat_value, 0.05, na.rm = TRUE),
+    q_hi = quantile(feat_value, 0.95, na.rm = TRUE),
+    lo   = ifelse(q_hi > q_lo, q_lo, min(feat_value, na.rm = TRUE)),
+    hi   = ifelse(q_hi > q_lo, q_hi, max(feat_value, na.rm = TRUE)),
+    feat_norm = (pmin(pmax(feat_value, lo), hi) - lo) / pmax(hi - lo, 1e-12)
+  ) %>%
+  select(-q_lo, -q_hi, -lo, -hi) %>%
   ungroup()
 
 # Order by mean |SHAP| (bottom = least important, top = most)

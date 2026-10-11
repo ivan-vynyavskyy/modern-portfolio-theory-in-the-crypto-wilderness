@@ -26,7 +26,7 @@ suppressPackageStartupMessages({
 # -----------------------------------------------------------------------------
 # CONSTANTS
 # -----------------------------------------------------------------------------
-DEFAULT_IN_CSV  <- "../data/tokens_vs_dist_agg.csv"
+DEFAULT_IN_CSV  <- "../data/distance_per_block_results/tokens_vs_dist_agg.csv"
 DEFAULT_OUT_PDF <- "../graphics/tokens_vs_distance.pdf"
 
 STRATEGY_LABELS <- c(
@@ -198,7 +198,7 @@ p <- ggplot(df, aes(x = num_tokens)) +
   ) +
 
   labs(
-    x = "Number of tokens (log scale)",
+    x = "Number of assets (log scale)",
     y = "L1 distance (%)"
   ) +
 
@@ -215,7 +215,7 @@ p <- ggplot(df, aes(x = num_tokens)) +
 # Add IQR ribbon note to the legend area via a secondary grob
 # (ggplot can't auto-legend a ribbon cleanly, so we add a caption-style note)
 p <- p +
-  labs(caption = "Shaded band = interquartile range (P25–P75)") +
+  labs(caption = "Shaded band = interquartile range (P25-P75)") +
   theme(
     plot.caption = element_text(
       color = "grey45", size = 9.5, face = "italic",

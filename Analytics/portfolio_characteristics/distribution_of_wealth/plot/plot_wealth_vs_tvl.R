@@ -3,9 +3,16 @@
 # plot_wealth_vs_tvl.R
 #
 # Description:
-#   Two-line chart comparing total market wealth (EOA + CA) against TVL
-#   (CA-only holdings) over time. Each series is shaded with a translucent
-#   area fill, and the final data points are annotated with their value.
+#   Two-line chart comparing total market wealth (EOA + CA) against the value
+#   held by contract accounts (CA-only holdings) over time. Each series is
+#   shaded with a translucent area fill, and the final data points are
+#   annotated with their value.
+#
+#   Note: the CA aggregate is NOT DeFi TVL. It covers every deployed contract
+#   (tokens, bridges, custodial multisigs, routers, treasuries, ...) and is not
+#   de-duplicated across receipt/wrapper tokens, so it exceeds DeFiLlama TVL
+#   by roughly 4-5x. For the DeFiLlama reference series see
+#   plot_wealth_vs_defillama_tvl.R and plot_wealth_ca_defillama_tvl.R.
 #
 # Input:
 #   CSV with columns: block, wallet_type, value_sum_usd
@@ -46,7 +53,7 @@ COLOR_WEALTH_FILL <- "#A6CEE3"
 COLOR_TVL_FILL    <- "#FDBF6F"
 
 # -----------------------------------------------------------------------------
-# DATA MAPPING (Block -> Date) — sourced from shared file
+# DATA MAPPING (Block -> Date), sourced from shared file
 # -----------------------------------------------------------------------------
 script_dir <- (function() {
   args <- commandArgs(trailingOnly = FALSE)
@@ -91,19 +98,21 @@ df_wealth <- df %>%
   summarise(value = sum(value_sum_usd, na.rm = TRUE), .groups = "drop") %>%
   mutate(series = "Total Wealth (EOA + CA)")
 
-# TVL = CA only, summed across all buckets
+# Contract-held value = CA only, summed across all buckets (not DeFi TVL)
 df_tvl <- df %>%
   filter(wallet_type == "CA") %>%
   group_by(date) %>%
   summarise(value = sum(value_sum_usd, na.rm = TRUE), .groups = "drop") %>%
-  mutate(series = "TVL (CA Holdings)")
+  mutate(series = "Contract-held value (CA)")
 
-df_lines <- bind_rows(df_wealth, df_tvl)
+# Fixed series order (legend + draw order): wealth first, CA second
+df_lines <- bind_rows(df_wealth, df_tvl) %>%
+  mutate(series = factor(series, levels = c("Total Wealth (EOA + CA)", "Contract-held value (CA)")))
 
 # Wide format for shaded area fills
 df_wide <- df_lines %>%
   tidyr::pivot_wider(names_from = series, values_from = value) %>%
-  rename(wealth = `Total Wealth (EOA + CA)`, tvl = `TVL (CA Holdings)`)
+  rename(wealth = `Total Wealth (EOA + CA)`, tvl = `Contract-held value (CA)`)
 
 # End-point labels
 fmt_usd_si <- function(x) paste0("$", scales::label_number(
@@ -121,12 +130,12 @@ last_points <- df_lines %>%
 cat("Generating plot...\n")
 
 series_colors <- c(
-  "Total Wealth (EOA + CA)" = COLOR_WEALTH,
-  "TVL (CA Holdings)"       = COLOR_TVL
+  "Total Wealth (EOA + CA)"  = COLOR_WEALTH,
+  "Contract-held value (CA)" = COLOR_TVL
 )
 series_lty <- c(
-  "Total Wealth (EOA + CA)" = "solid",
-  "TVL (CA Holdings)"       = "solid"
+  "Total Wealth (EOA + CA)"  = "solid",
+  "Contract-held value (CA)" = "solid"
 )
 
 # Explicit y-axis breaks and labels

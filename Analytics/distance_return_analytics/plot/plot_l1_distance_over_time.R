@@ -26,7 +26,7 @@ suppressPackageStartupMessages({
 # -----------------------------------------------------------------------------
 # CONSTANTS
 # -----------------------------------------------------------------------------
-DEFAULT_IN_CSV  <- "../data/per_block_distance_stats.csv"
+DEFAULT_IN_CSV  <- "../data/distance_per_block_results/per_block_distance_stats.csv"
 DEFAULT_OUT_PDF <- "../graphics/l1_distance_over_time.pdf"
 
 STRATEGY_COLORS <- c(
@@ -42,9 +42,9 @@ STRATEGY_LABELS <- c(
 )
 
 GROUP_LABELS <- c(
-  "all"  = "All wallets",
-  "lt5"  = "Tokens < 5",
-  "gte5" = "Tokens >= 5"
+  "all"  = "All accounts",
+  "lt5"  = "Assets < 5",
+  "gte5" = "Assets >= 5"
 )
 
 # -----------------------------------------------------------------------------

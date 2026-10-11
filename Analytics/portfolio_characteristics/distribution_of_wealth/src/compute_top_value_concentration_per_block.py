@@ -14,6 +14,11 @@ Description:
     parser (ADDR_RE) to avoid DuckDB CSV/TSV sniffing issues on large
     or irregular TSVs.
 
+Exclusion:
+    The beacon deposit contract (0x00000000219ab540356cbb839cbe05303d7705fa)
+    is dropped before any aggregation: it custodies all staked ETH for
+    validators and is not an account's wealth.
+
 Input:
     - Parquet with block_number, wallet_address, total_value_usd
       (--parquet).
@@ -41,14 +46,31 @@ from __future__ import annotations
 import argparse
 import re
 from pathlib import Path
-from typing import Dict, Iterable, List, Set
+from typing import Dict, List, Set
 
 import duckdb
 import numpy as np
 import pandas as pd
 
+# The beacon-chain deposit contract holds every ETH ever staked (73 M ETH by
+# December 2025) on behalf of validators whose claims live on the consensus
+# layer. That is custody, not an account's wealth, so the address is excluded
+# as an ETH holder from every value-based statistic. Token universe unchanged.
+BEACON_DEPOSIT_CONTRACT = "0x00000000219ab540356cbb839cbe05303d7705fa"
+
 
 ADDR_RE = re.compile(r"0x[a-fA-F0-9]{40}")
+
+
+def parquet_scan_target(path: str | Path) -> str:
+    """Accept either a single parquet file or a 4_2-style hive root
+    (block_number=N/ subdirs, block_number NOT in file bodies). For a
+    directory, return a glob the queries read with hive_partitioning=1
+    so block_number materializes from the directory names."""
+    p = Path(path)
+    if p.is_dir():
+        return str(p.resolve() / "*" / "*.parquet")
+    return str(p.resolve())
 
 
 def normalize_address(x) -> str:
@@ -111,7 +133,8 @@ def get_duck(*, threads: int, mem: str) -> duckdb.DuckDBPyConnection:
 
 def discover_blocks(con: duckdb.DuckDBPyConnection, parquet_path: str) -> List[int]:
     rows = con.execute(
-        "SELECT DISTINCT block_number FROM read_parquet(?) ORDER BY block_number",
+        "SELECT DISTINCT block_number FROM read_parquet(?, hive_partitioning=1) "
+        "ORDER BY block_number",
         [parquet_path],
     ).fetchall()
     return [int(r[0]) for r in rows]
@@ -155,13 +178,14 @@ def compute_block(
     EOA, and computes absolute top-k sums plus share-of-total for ALL,
     EOA, and CA.
     """
-    q = """
+    q = f"""
     SELECT
       wallet_address,
       TRY_CAST(total_value_usd AS DOUBLE) AS v
-    FROM read_parquet(?)
+    FROM read_parquet(?, hive_partitioning=1)
     WHERE block_number = ?
       AND TRY_CAST(total_value_usd AS DOUBLE) > ?
+      AND lower(trim(wallet_address)) <> '{BEACON_DEPOSIT_CONTRACT}'
     """
     df = con.execute(q, [parquet_path, int(block_number), float(min_value_usd)]).df()
 
@@ -184,7 +208,10 @@ def compute_block(
             ]
         )
 
-    df["wa_norm"] = df["wallet_address"].map(normalize_address)
+    # Vectorized normalization: at post-ETH scale a block can carry tens of
+    # millions of rows, where a per-row Python map costs minutes per block.
+    # 4_0 already writes lowercase 0x-prefixed addresses.
+    df["wa_norm"] = df["wallet_address"].astype(str).str.strip().str.lower()
     df["is_ca"] = df["wa_norm"].isin(ca_set)
     df["v"] = df["v"].astype(float)
 
@@ -243,7 +270,7 @@ def main() -> None:
     ap.add_argument("--overwrite", action="store_true")
     args = ap.parse_args()
 
-    parquet_path = str(Path(args.parquet).resolve())
+    parquet_path = parquet_scan_target(args.parquet)
     ca_path = str(Path(args.ca_tsv).resolve())
     out_csv = Path(args.out_csv).resolve()
 

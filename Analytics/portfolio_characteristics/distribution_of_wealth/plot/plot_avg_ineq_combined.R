@@ -67,6 +67,11 @@ df <- df %>% filter(date != "date")
 
 token_col <- if ("token_address" %in% names(df)) "token_address" else "token"
 
+# Drop the native-ETH pseudo-token row (0xee..ee) that the ETH-inclusive run
+# adds per snapshot: the figure averages *token* inequality.
+ETH_PSEUDO_TOKEN <- paste0("0x", strrep("ee", 20))
+df <- df %>% filter(tolower(.data[[token_col]]) != ETH_PSEUDO_TOKEN)
+
 df <- df %>%
   mutate(
     date    = ymd(date, quiet = TRUE),
@@ -83,6 +88,14 @@ if (!is.null(opt[["start-date"]])) {
 }
 
 df <- df %>% filter(holders > opt[["min-holders"]])
+
+# Eight tokens carry one address with an impossible (2^256-scale) balance, so
+# their decimals-adjusted supply exceeds 1e50 and every share collapses to 1
+# (gini ~ 1, hhi = 1, nakamoto = 1). Drop those rows; clip float-noise gini > 1.
+if ("supply" %in% names(df)) {
+  df <- df %>% filter(is.na(as.numeric(supply)) | as.numeric(supply) < 1e50)
+}
+df <- df %>% mutate(gini = pmin(gini, 1))
 cat(sprintf("Rows after filtering: %d\n", nrow(df)))
 
 # -----------------------------------------------------------------------------

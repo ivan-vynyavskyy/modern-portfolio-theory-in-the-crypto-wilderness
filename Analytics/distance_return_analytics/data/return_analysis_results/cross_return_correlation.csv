@@ -1,0 +1,7 @@
+,baseline,better_return,safer_risk,max_sharpe,equal_weight,mcap_weight
+baseline,1.0,0.0,0.0,0.0,0.0,-0.0
+better_return,0.0,1.0,0.8332,0.9026,0.9054,-0.0
+safer_risk,0.0,0.8332,1.0,0.9694,0.9457,-0.0
+max_sharpe,0.0,0.9026,0.9694,1.0,0.9547,-0.0
+equal_weight,0.0,0.9054,0.9457,0.9547,1.0,-0.0
+mcap_weight,-0.0,-0.0,-0.0,-0.0,-0.0,1.0

@@ -21,6 +21,13 @@
 #     --out_pdf ../graphics/portfolio_size_stacked_avg.pdf
 # =============================================================================
 
+# Bucket labels contain en-dashes. Matching them against the UTF-8 CSV and
+# drawing them needs a UTF-8 locale; shells without LANG (cron, some tool
+# runners) start R in the C locale, so force one here.
+if (!grepl("UTF-8", Sys.getlocale("LC_CTYPE"), ignore.case = TRUE)) {
+  invisible(try(Sys.setlocale("LC_CTYPE", "en_US.UTF-8"), silent = TRUE))
+}
+
 suppressPackageStartupMessages({
   library(readr)
   library(dplyr)
@@ -51,17 +58,17 @@ if (!file.exists(opt$input)) stop(paste("Input file not found:", opt$input))
 
 df_hist <- read_csv(opt$input, show_col_types = FALSE)
 
-wealth_levels <- c("0–1","1–100","100–1,000","1,000–10,000","10,000–100,000",">100,000")
+wealth_levels <- c("0\u20131","1\u2013100","100\u20131,000","1,000\u201310,000","10,000\u2013100,000",">100,000")
 wealth_labels <- c(
-  "0–1"            = "$0–$1",
-  "1–100"          = "$1–$100",
-  "100–1,000"      = "$100–$1,000",
-  "1,000–10,000"   = "$1,000–$10,000",
-  "10,000–100,000" = "$10,000–$100,000",
+  "0\u20131"            = "$0\u2013$1",
+  "1\u2013100"          = "$1\u2013$100",
+  "100\u20131,000"      = "$100\u2013$1,000",
+  "1,000\u201310,000"   = "$1,000\u2013$10,000",
+  "10,000\u2013100,000" = "$10,000\u2013$100,000",
   ">100,000"       = ">$100,000"
 )
 
-size_levels <- c("1","2","3","4","5","6–10","11–20","21–50","51–100",">100")
+size_levels <- c("1","2","3","4","5","6\u201310","11\u201320","21\u201350","51\u2013100",">100")
 
 df_hist <- df_hist %>%
   mutate(
@@ -154,7 +161,8 @@ ggsave(
   plot = p_stack_avg,
   width = opt$width,
   height = opt$height,
-  device = "pdf"
+  device = "pdf",
+    encoding = "WinAnsi"  # has the en-dash; the default Latin-1 encoding prints dots instead
 )
 
 cat(sprintf("[ok] Saved PDF: %s\n", out_file))

@@ -8,43 +8,68 @@ Description:
     20-day forward returns (ret_*) instead of L1 distances. Covers
     correlations, return distributions, baseline vs optimised
     comparisons, regressions, ETH/BTC holder analysis, and CAPM alpha.
-    Designed for ~239M rows, 128 GB RAM, 32 cores.
+    Exact quantiles hold every value in memory, outside DuckDB's
+    memory_limit, so each quantile query covers a single column
+    (peak ~30 GiB at 0.83 B rows).
 
 Input:
-    Hive-partitioned parquet directory (ROOT) with block_number,
-    wallet_address, returns, betas, market_return, num_tokens.
+    Hive-partitioned parquet directory (--root) with block_number,
+    wallet_address, returns, betas, market_return, holdings_short.
+    num_tokens (portfolio size N) is the number of assets in
+    holdings_short, i.e. the optimised set, not 5_0's raw on-chain count.
 
 Output:
-    CSV exports + return_analysis_log.txt in OUTPUT_DIR.
+    CSV exports + return_analysis_log.txt in --out-dir.
+
+Usage:
+    python mpt_return_analysis.py \
+        --root     <mpt-optimization-results-eth>/wallet_level \
+        --out-dir  <mpt-optimization-results-eth>/return_analysis_results \
+        --temp-dir <duckdb_tmp> --threads 32 --mem 100GB
 9.  Alpha analysis (ret - beta × market_return)
 10. Additional analytics
 """
 
-import os, sys, time, json, warnings
+import argparse, os, sys, time, warnings
 from datetime import datetime
-from io import StringIO
-from contextlib import redirect_stdout
 
 import duckdb
 import numpy as np
 import pandas as pd
 from scipy import stats as sp_stats
 
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared"))
-from locations import Location
-
 warnings.filterwarnings("ignore")
 
 # -----------------------------------------------------------------------------
-# Config
+# Config (all paths come from the command line, no defaults)
 # -----------------------------------------------------------------------------
-ROOT = str(Location.MPT_DATA_EXTENDED)
-OUTPUT_DIR = str(Location.MPT_RETURN_RESULTS)
+def parse_args():
+    p = argparse.ArgumentParser(
+        description="Full-scale return analysis of the MPT optimisation results."
+    )
+    p.add_argument("--root", type=str, required=True,
+                   help="Hive-partitioned wallet-level parquet directory (block_number=*/).")
+    p.add_argument("--out-dir", type=str, required=True,
+                   help="Output directory for CSVs and return_analysis_log.txt.")
+    p.add_argument("--temp-dir", type=str, required=True,
+                   help="DuckDB spill directory (keep it off the home fileset).")
+    p.add_argument("--threads", type=int, default=32)
+    p.add_argument("--mem", type=str, default="100GB",
+                   help="DuckDB memory_limit.")
+    return p.parse_args()
+
+
+args = parse_args()
+if not os.path.isdir(args.root):
+    sys.exit(f"--root is not a directory: {args.root}")
+
+ROOT = args.root
+OUTPUT_DIR = args.out_dir
+TEMP_DIR = args.temp_dir
 SAMPLE_SIZE = 50_000_000          # 50M for correlations
 REGRESSION_SAMPLE = 10_000_000    # 10M for heavier models
-N_CORES = 32
+N_CORES = args.threads
+MEM_LIMIT = args.mem
 SEED = 42
 
 # Return columns — baseline + 5 strategies
@@ -85,6 +110,7 @@ RETURN_BUCKETS_LABELS = [
 # ETH and BTC wrapper token addresses (lowercase)
 # -----------------------------------------------------------------------------
 ETH_WRAPPER_ADDRESSES = [
+    "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",  # native ETH (5_0 merges WETH into it)
     "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",  # WETH
     "0x7f39c581f595b53c5cb19bd0b3f8da6c935e2ca0",  # wstETH
     "0xbe9895146f7af43049ca1c1ae358b0541ea49704",  # cbETH
@@ -132,6 +158,7 @@ def _sql_holds_any(column, addresses):
 
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(TEMP_DIR, exist_ok=True)
 
 # -----------------------------------------------------------------------------
 # Logging helper – tee to console + file
@@ -162,22 +189,49 @@ def save_csv(df, name):
     log(f"  → saved {path}")
 
 
+def pct(count, n):
+    """Share of the n rows that have a value, so rows where a column is NULL
+    (e.g. ret_mcap_weight without a market cap) do not count against it."""
+    return round(int(count) / n * 100, 2) if n else float("nan")
+
+
+def grouped_medians(source, key_sql, key_names, where=""):
+    """COUNT(*) and the median of every return column and market_return per
+    group, one median per query (see 4a), joined on the group keys."""
+    parts = []
+    for rc, rl in zip(RETURN_COLS + ["market_return"], RETURN_LABELS + ["market"]):
+        part = con.sql(f"""
+            SELECT {key_sql}, COUNT(*) AS n, MEDIAN({rc}) AS median_{rl}
+            FROM {source} {where}
+            GROUP BY {', '.join(key_names)}
+        """).fetchdf().set_index(key_names)
+        parts.append(part if not parts else part[[f"median_{rl}"]])
+    return pd.concat(parts, axis=1).reset_index()
+
+
 # -----------------------------------------------------------------------------
 # 1. Setup DuckDB
 # -----------------------------------------------------------------------------
 log("=" * 70)
 log("MPT RETURN ANALYSIS — FULL SCALE")
 log("=" * 70)
+log(f"Input:    {ROOT}")
+log(f"Output:   {OUTPUT_DIR}")
+log(f"Temp dir: {TEMP_DIR}  (threads={N_CORES}, memory_limit={MEM_LIMIT})")
 log()
 
 t0 = time.time()
 con = duckdb.connect(database=":memory:")
 con.execute(f"SET threads = {N_CORES}")
-con.execute("SET memory_limit = '100GB'")
+con.execute(f"SET memory_limit = '{MEM_LIMIT}'")
+con.execute(f"SET temp_directory = '{TEMP_DIR}'")
 
+# num_tokens = assets in the optimised set (holdings_short). The stored
+# column is the raw on-chain count: it counts ETH and WETH separately and
+# includes assets dropped for too short a price history.
 con.execute(f"""
     CREATE VIEW all_data AS
-    SELECT *
+    SELECT * REPLACE (CAST(json_array_length(holdings_short) AS INTEGER) AS num_tokens)
     FROM read_parquet('{ROOT}/*/*.parquet', hive_partitioning=true)
 """)
 
@@ -356,48 +410,46 @@ log("=" * 70)
 log("SECTION 4: Return Distribution (full data)")
 log("=" * 70)
 
-# 4a. Descriptive statistics for every return column + market_return
+# 4a. Descriptive statistics for every return column + market_return.
+# One column per query: exact quantiles hold every value in memory, outside
+# DuckDB's memory_limit, so batching columns multiplies the peak. All five
+# quantiles of a column come from one list call.
 log("  4a. Descriptive statistics ...")
-desc_parts = []
-for col in RETURN_COLS + ["market_return"]:
-    desc_parts.append(f"""
-        AVG({col})                                                 AS mean_{col},
-        STDDEV({col})                                              AS std_{col},
-        MIN({col})                                                 AS min_{col},
-        PERCENTILE_CONT(0.05)  WITHIN GROUP (ORDER BY {col})      AS p05_{col},
-        PERCENTILE_CONT(0.25)  WITHIN GROUP (ORDER BY {col})      AS p25_{col},
-        MEDIAN({col})                                              AS median_{col},
-        PERCENTILE_CONT(0.75)  WITHIN GROUP (ORDER BY {col})      AS p75_{col},
-        PERCENTILE_CONT(0.95)  WITHIN GROUP (ORDER BY {col})      AS p95_{col},
-        MAX({col})                                                 AS max_{col},
-        SUM(CASE WHEN {col} > 0 THEN 1 ELSE 0 END)               AS positive_{col},
-        SUM(CASE WHEN {col} = 0 THEN 1 ELSE 0 END)               AS zero_{col},
-        SUM(CASE WHEN {col} < 0 THEN 1 ELSE 0 END)               AS negative_{col}
-    """)
-
-desc_sql = f"SELECT COUNT(*) AS total, {','.join(desc_parts)} FROM all_data"
 t1 = time.time()
-desc_row = con.sql(desc_sql).fetchdf().iloc[0]
-total = desc_row["total"]
-log(f"  Done in {time.time()-t1:.1f}s")
-
 desc_records = []
 for col, label in zip(RETURN_COLS + ["market_return"], RETURN_LABELS + ["market"]):
+    r = con.sql(f"""
+        SELECT
+            COUNT({col})                                        AS n,
+            AVG({col})                                          AS mean,
+            STDDEV({col})                                       AS std,
+            MIN({col})                                          AS min,
+            QUANTILE_CONT({col}, [0.05, 0.25, 0.5, 0.75, 0.95]) AS q,
+            MAX({col})                                          AS max,
+            SUM(CASE WHEN {col} > 0 THEN 1 ELSE 0 END)         AS positive,
+            SUM(CASE WHEN {col} = 0 THEN 1 ELSE 0 END)         AS zero,
+            SUM(CASE WHEN {col} < 0 THEN 1 ELSE 0 END)         AS negative
+        FROM all_data
+    """).fetchdf().iloc[0]
+    n = int(r["n"])
+    p05, p25, median, p75, p95 = r["q"] if n else (np.nan,) * 5
     desc_records.append({
         "portfolio": label,
-        "mean": round(desc_row[f"mean_{col}"], 6),
-        "std": round(desc_row[f"std_{col}"], 6),
-        "min": round(desc_row[f"min_{col}"], 4),
-        "p05": round(desc_row[f"p05_{col}"], 4),
-        "p25": round(desc_row[f"p25_{col}"], 4),
-        "median": round(desc_row[f"median_{col}"], 4),
-        "p75": round(desc_row[f"p75_{col}"], 4),
-        "p95": round(desc_row[f"p95_{col}"], 4),
-        "max": round(desc_row[f"max_{col}"], 4),
-        "positive_pct": round(int(desc_row[f"positive_{col}"]) / total * 100, 2),
-        "zero_pct": round(int(desc_row[f"zero_{col}"]) / total * 100, 2),
-        "negative_pct": round(int(desc_row[f"negative_{col}"]) / total * 100, 2),
+        "mean": round(r["mean"], 6),
+        "std": round(r["std"], 6),
+        "min": round(r["min"], 4),
+        "p05": round(p05, 4),
+        "p25": round(p25, 4),
+        "median": round(median, 4),
+        "p75": round(p75, 4),
+        "p95": round(p95, 4),
+        "max": round(r["max"], 4),
+        "positive_pct": pct(r["positive"], n),
+        "zero_pct": pct(r["zero"], n),
+        "negative_pct": pct(r["negative"], n),
+        "n": n,
     })
+log(f"  Done in {time.time()-t1:.1f}s")
 
 desc_df = pd.DataFrame(desc_records).set_index("portfolio")
 log_df(desc_df, "Return descriptive statistics (full data):")
@@ -409,16 +461,17 @@ log("  4b. Return bucket distribution ...")
 bucket_cases = []
 for col, label in zip(RETURN_COLS + ["market_return"], RETURN_LABELS + ["market"]):
     # Returns are in decimal form (e.g., -0.31 = -31%)
-    pct = f"({col} * 100.0)"
+    p = f"({col} * 100.0)"
     bucket_cases.append(f"""
-        SUM(CASE WHEN {pct} <  -50                       THEN 1 ELSE 0 END) AS "{label}_lt_neg50",
-        SUM(CASE WHEN {pct} >= -50 AND {pct} < -20       THEN 1 ELSE 0 END) AS "{label}_neg50_neg20",
-        SUM(CASE WHEN {pct} >= -20 AND {pct} <  -5       THEN 1 ELSE 0 END) AS "{label}_neg20_neg5",
-        SUM(CASE WHEN {pct} >=  -5 AND {pct} <   0       THEN 1 ELSE 0 END) AS "{label}_neg5_0",
-        SUM(CASE WHEN {pct} >=   0 AND {pct} <   5       THEN 1 ELSE 0 END) AS "{label}_0_5",
-        SUM(CASE WHEN {pct} >=   5 AND {pct} <  20       THEN 1 ELSE 0 END) AS "{label}_5_20",
-        SUM(CASE WHEN {pct} >=  20 AND {pct} <  50       THEN 1 ELSE 0 END) AS "{label}_20_50",
-        SUM(CASE WHEN {pct} >=  50                        THEN 1 ELSE 0 END) AS "{label}_gte50"
+        COUNT({col})                                                    AS "{label}_n",
+        SUM(CASE WHEN {p} <  -50                     THEN 1 ELSE 0 END) AS "{label}_lt_neg50",
+        SUM(CASE WHEN {p} >= -50 AND {p} < -20       THEN 1 ELSE 0 END) AS "{label}_neg50_neg20",
+        SUM(CASE WHEN {p} >= -20 AND {p} <  -5       THEN 1 ELSE 0 END) AS "{label}_neg20_neg5",
+        SUM(CASE WHEN {p} >=  -5 AND {p} <   0       THEN 1 ELSE 0 END) AS "{label}_neg5_0",
+        SUM(CASE WHEN {p} >=   0 AND {p} <   5       THEN 1 ELSE 0 END) AS "{label}_0_5",
+        SUM(CASE WHEN {p} >=   5 AND {p} <  20       THEN 1 ELSE 0 END) AS "{label}_5_20",
+        SUM(CASE WHEN {p} >=  20 AND {p} <  50       THEN 1 ELSE 0 END) AS "{label}_20_50",
+        SUM(CASE WHEN {p} >=  50                      THEN 1 ELSE 0 END) AS "{label}_gte50"
     """)
 
 dist_sql = f"SELECT COUNT(*) AS total, {','.join(bucket_cases)} FROM all_data"
@@ -432,11 +485,12 @@ suffix_keys = [
 ]
 dist_records = []
 for label in RETURN_LABELS + ["market"]:
+    n = int(dist_row[f"{label}_n"])
     for bkt_label, sfx in zip(RETURN_BUCKETS_LABELS, suffix_keys):
         cnt = int(dist_row[f"{label}_{sfx}"])
         dist_records.append({
             "portfolio": label, "bucket": bkt_label,
-            "count": cnt, "pct": round(cnt / total * 100, 2),
+            "count": cnt, "pct": pct(cnt, n),
         })
 
 dist_df = pd.DataFrame(dist_records)
@@ -458,36 +512,31 @@ log("=" * 70)
 log("SECTION 5: Baseline vs Optimised Return Comparison (full data)")
 log("=" * 70)
 
-# 5a. How often does each strategy beat baseline?
+# 5a. How often does each strategy beat baseline? (one strategy per query, see 4a)
 log("  5a. Win rates — strategy beats baseline ...")
-win_parts = []
-for col, label in zip(OPT_RETURN_COLS, OPT_RETURN_LABELS):
-    win_parts.append(f"""
-        SUM(CASE WHEN {col} > ret_baseline THEN 1 ELSE 0 END) AS wins_{label},
-        SUM(CASE WHEN {col} = ret_baseline THEN 1 ELSE 0 END) AS ties_{label},
-        SUM(CASE WHEN {col} < ret_baseline THEN 1 ELSE 0 END) AS losses_{label},
-        AVG({col} - ret_baseline)                              AS mean_diff_{label},
-        MEDIAN({col} - ret_baseline)                           AS median_diff_{label}
-    """)
-
-win_sql = f"SELECT COUNT(*) AS total, {','.join(win_parts)} FROM all_data"
 t1 = time.time()
-win_row = con.sql(win_sql).fetchdf().iloc[0]
-log(f"  Done in {time.time()-t1:.1f}s")
-
 win_records = []
-for label in OPT_RETURN_LABELS:
-    wins = int(win_row[f"wins_{label}"])
-    ties = int(win_row[f"ties_{label}"])
-    losses = int(win_row[f"losses_{label}"])
+for col, label in zip(OPT_RETURN_COLS, OPT_RETURN_LABELS):
+    r = con.sql(f"""
+        SELECT
+            COUNT({col} - ret_baseline)                            AS n,
+            SUM(CASE WHEN {col} > ret_baseline THEN 1 ELSE 0 END)  AS wins,
+            SUM(CASE WHEN {col} = ret_baseline THEN 1 ELSE 0 END)  AS ties,
+            SUM(CASE WHEN {col} < ret_baseline THEN 1 ELSE 0 END)  AS losses,
+            AVG({col} - ret_baseline)                              AS mean_diff,
+            MEDIAN({col} - ret_baseline)                           AS median_diff
+        FROM all_data
+    """).fetchdf().iloc[0]
+    n = int(r["n"])
     win_records.append({
         "strategy": label,
-        "win_pct": round(wins / total * 100, 2),
-        "tie_pct": round(ties / total * 100, 2),
-        "loss_pct": round(losses / total * 100, 2),
-        "mean_diff_vs_baseline": round(win_row[f"mean_diff_{label}"], 6),
-        "median_diff_vs_baseline": round(win_row[f"median_diff_{label}"], 6),
+        "win_pct": pct(r["wins"], n),
+        "tie_pct": pct(r["ties"], n),
+        "loss_pct": pct(r["losses"], n),
+        "mean_diff_vs_baseline": round(r["mean_diff"], 6),
+        "median_diff_vs_baseline": round(r["median_diff"], 6),
     })
+log(f"  Done in {time.time()-t1:.1f}s")
 
 win_df = pd.DataFrame(win_records).set_index("strategy")
 log_df(win_df, "Strategy vs Baseline — win/tie/loss rates + return differences:")
@@ -510,14 +559,9 @@ for dist_col, dist_label in zip(DIST_TARGETS_RAW, DIST_LABELS):
     pct_expr = f"({dist_col} / 2.0 * 100.0)"
     log(f"\n--- {dist_label.upper()} distance buckets ---")
 
-    ret_avgs = ", ".join(
-        f"MEDIAN({rc}) AS median_{rl}" for rc, rl in zip(RETURN_COLS, RETURN_LABELS)
-    )
-    ret_avgs += ", MEDIAN(market_return) AS median_market"
-
+    # Distances outside [0, 100] % keep their own 'NaN' row, as before.
     bucket_sql = f"""
-    SELECT
-        CASE
+        COALESCE(CASE
             WHEN {dist_col} = 0                                    THEN '0_exact'
             WHEN {pct_expr} >  0 AND {pct_expr} <=  1             THEN '(0,1]'
             WHEN {pct_expr} >  1 AND {pct_expr} <= 20             THEN '(1,20]'
@@ -525,16 +569,11 @@ for dist_col, dist_label in zip(DIST_TARGETS_RAW, DIST_LABELS):
             WHEN {pct_expr} > 40 AND {pct_expr} <= 60             THEN '(40,60]'
             WHEN {pct_expr} > 60 AND {pct_expr} <= 80             THEN '(60,80]'
             WHEN {pct_expr} > 80 AND {pct_expr} <= 100            THEN '(80,100]'
-        END AS dist_bucket,
-        COUNT(*) AS n,
-        {ret_avgs}
-    FROM all_data
-    WHERE {dist_col} IS NOT NULL
-    GROUP BY dist_bucket
-    ORDER BY dist_bucket
+        END, 'NaN') AS dist_bucket
     """
 
-    bkt_df = con.sql(bucket_sql).fetchdf()
+    bkt_df = grouped_medians("all_data", bucket_sql, ["dist_bucket"],
+                             where=f"WHERE {dist_col} IS NOT NULL")
     order = ["0_exact", "(0,1]", "(1,20]", "(20,40]", "(40,60]", "(60,80]", "(80,100]"]
     bkt_df["dist_bucket"] = pd.Categorical(bkt_df["dist_bucket"], categories=order, ordered=True)
     bkt_df = bkt_df.sort_values("dist_bucket").set_index("dist_bucket")
@@ -742,54 +781,51 @@ log("  8a. Prevalence of ETH/BTC wrappers in baseline holdings ...")
 holds_eth_expr = _sql_holds_any("holdings_short", ETH_WRAPPER_ADDRESSES)
 holds_btc_expr = _sql_holds_any("holdings_short", BTC_WRAPPER_ADDRESSES)
 
-prevalence_sql = f"""
+# The flags need a scan of the long holdings_short text, so they are computed
+# once, next to the return columns, into a temp table that 8a and 8b read.
+# DuckDB spills the table to --temp-dir when it outgrows --mem.
+t1 = time.time()
+con.execute(f"""
+    CREATE TEMP TABLE holder_flags AS
+    SELECT
+        CAST({holds_eth_expr} AS TINYINT) AS holds_eth,
+        CAST({holds_btc_expr} AS TINYINT) AS holds_btc,
+        {', '.join(RETURN_COLS)}, market_return
+    FROM all_data
+""")
+
+prevalence_sql = """
 SELECT
-    COUNT(*)                                                 AS total,
-    SUM({holds_eth_expr})                                    AS holds_eth,
-    SUM({holds_btc_expr})                                    AS holds_btc,
-    SUM(CASE WHEN ({holds_eth_expr}) = 1
-              AND ({holds_btc_expr}) = 1 THEN 1 ELSE 0 END) AS holds_both,
-    SUM(CASE WHEN ({holds_eth_expr}) = 0
-              AND ({holds_btc_expr}) = 0 THEN 1 ELSE 0 END) AS holds_neither
-FROM all_data
+    COUNT(*)                                                         AS total,
+    SUM(holds_eth)                                                   AS holds_eth,
+    SUM(holds_btc)                                                   AS holds_btc,
+    SUM(CASE WHEN holds_eth = 1 AND holds_btc = 1 THEN 1 ELSE 0 END) AS holds_both,
+    SUM(CASE WHEN holds_eth = 0 AND holds_btc = 0 THEN 1 ELSE 0 END) AS holds_neither
+FROM holder_flags
 """
 
-t1 = time.time()
 prev_row = con.sql(prevalence_sql).fetchdf().iloc[0]
+n_all = int(prev_row["total"])
 log(f"  Done in {time.time()-t1:.1f}s")
 
 for k in ["holds_eth", "holds_btc", "holds_both", "holds_neither"]:
     cnt = int(prev_row[k])
-    log(f"  {k}: {cnt:,} ({cnt/total*100:.2f}%)")
+    log(f"  {k}: {cnt:,} ({cnt/n_all*100:.2f}%)")
 
 prev_out = pd.DataFrame({
     "metric": ["holds_eth", "holds_btc", "holds_both", "holds_neither"],
     "count": [int(prev_row[k]) for k in ["holds_eth", "holds_btc", "holds_both", "holds_neither"]],
-    "pct": [round(int(prev_row[k])/total*100, 4) for k in ["holds_eth", "holds_btc", "holds_both", "holds_neither"]],
+    "pct": [round(int(prev_row[k])/n_all*100, 4) for k in ["holds_eth", "holds_btc", "holds_both", "holds_neither"]],
 }).set_index("metric")
 save_csv(prev_out, "eth_btc_prevalence.csv")
 
-# 8b. Median returns by ETH/BTC holder status (full data, DuckDB)
+# 8b. Median returns by ETH/BTC holder status (full data, one median per query)
 log("\n  8b. Median returns by ETH/BTC holder status ...")
 
-ret_medians_str = ", ".join(
-    f"MEDIAN({rc}) AS median_{rl}" for rc, rl in zip(RETURN_COLS, RETURN_LABELS)
-)
-ret_medians_str += ", MEDIAN(market_return) AS median_market"
-
-holder_group_sql = f"""
-SELECT
-    {holds_eth_expr} AS holds_eth,
-    {holds_btc_expr} AS holds_btc,
-    COUNT(*) AS n,
-    {ret_medians_str}
-FROM all_data
-GROUP BY holds_eth, holds_btc
-ORDER BY holds_eth, holds_btc
-"""
-
 t1 = time.time()
-holder_df = con.sql(holder_group_sql).fetchdf()
+holder_df = (grouped_medians("holder_flags", "holds_eth, holds_btc", ["holds_eth", "holds_btc"])
+             .sort_values(["holds_eth", "holds_btc"]).reset_index(drop=True))
+con.execute("DROP TABLE holder_flags")
 log(f"  Done in {time.time()-t1:.1f}s")
 log_df(holder_df.round(6), "  Median returns by (holds_eth, holds_btc):")
 save_csv(holder_df.round(6), "returns_by_eth_btc_holder.csv")
@@ -993,35 +1029,32 @@ log("=" * 70)
 
 # 9a. Full-data alpha descriptive stats
 log("  9a. Alpha descriptive statistics ...")
-alpha_parts = []
-for ret_col, beta_col, label in zip(RETURN_COLS, BETA_COLS, RETURN_LABELS):
-    alpha_expr = f"({ret_col} - {beta_col} * market_return)"
-    alpha_parts.append(f"""
-        AVG({alpha_expr})                                              AS mean_alpha_{label},
-        STDDEV({alpha_expr})                                           AS std_alpha_{label},
-        MEDIAN({alpha_expr})                                           AS median_alpha_{label},
-        PERCENTILE_CONT(0.05)  WITHIN GROUP (ORDER BY {alpha_expr})   AS p05_alpha_{label},
-        PERCENTILE_CONT(0.95)  WITHIN GROUP (ORDER BY {alpha_expr})   AS p95_alpha_{label},
-        SUM(CASE WHEN {alpha_expr} > 0 THEN 1 ELSE 0 END)            AS positive_alpha_{label}
-    """)
-
-alpha_sql = f"SELECT COUNT(*) AS total, {','.join(alpha_parts)} FROM all_data"
 t1 = time.time()
-alpha_row = con.sql(alpha_sql).fetchdf().iloc[0]
-log(f"  Done in {time.time()-t1:.1f}s")
-
 alpha_records = []
-for label in RETURN_LABELS:
-    pos = int(alpha_row[f"positive_alpha_{label}"])
+for ret_col, beta_col, label in zip(RETURN_COLS, BETA_COLS, RETURN_LABELS):
+    # One alpha per query (see 4a); median and tails from one list call.
+    alpha_expr = f"({ret_col} - {beta_col} * market_return)"
+    r = con.sql(f"""
+        SELECT
+            COUNT({alpha_expr})                                AS n,
+            AVG({alpha_expr})                                  AS mean,
+            STDDEV({alpha_expr})                               AS std,
+            QUANTILE_CONT({alpha_expr}, [0.05, 0.5, 0.95])     AS q,
+            SUM(CASE WHEN {alpha_expr} > 0 THEN 1 ELSE 0 END) AS positive
+        FROM all_data
+    """).fetchdf().iloc[0]
+    n = int(r["n"])
+    p05, median, p95 = r["q"] if n else (np.nan,) * 3
     alpha_records.append({
         "portfolio": label,
-        "mean_alpha": round(alpha_row[f"mean_alpha_{label}"], 6),
-        "std_alpha": round(alpha_row[f"std_alpha_{label}"], 6),
-        "median_alpha": round(alpha_row[f"median_alpha_{label}"], 6),
-        "p05_alpha": round(alpha_row[f"p05_alpha_{label}"], 4),
-        "p95_alpha": round(alpha_row[f"p95_alpha_{label}"], 4),
-        "positive_alpha_pct": round(pos / total * 100, 2),
+        "mean_alpha": round(r["mean"], 6),
+        "std_alpha": round(r["std"], 6),
+        "median_alpha": round(median, 6),
+        "p05_alpha": round(p05, 4),
+        "p95_alpha": round(p95, 4),
+        "positive_alpha_pct": pct(r["positive"], n),
     })
+log(f"  Done in {time.time()-t1:.1f}s")
 
 alpha_desc_df = pd.DataFrame(alpha_records).set_index("portfolio")
 log_df(alpha_desc_df, "Alpha descriptive statistics (full data):")
@@ -1029,30 +1062,28 @@ save_csv(alpha_desc_df, "alpha_descriptive_stats.csv")
 
 # 9b. Alpha improvement: optimised alpha minus baseline alpha
 log("\n  9b. Alpha improvement: optimised − baseline alpha ...")
-alpha_imp_parts = []
+alpha_imp_records = []
 for ret_col, beta_col, label in zip(OPT_RETURN_COLS,
                                       BETA_COLS[1:],  # skip beta_baseline
                                       OPT_RETURN_LABELS):
+    # One strategy per query (see 4a).
     opt_alpha = f"({ret_col} - {beta_col} * market_return)"
     base_alpha = f"(ret_baseline - beta_baseline * market_return)"
     diff = f"({opt_alpha} - {base_alpha})"
-    alpha_imp_parts.append(f"""
-        AVG({diff})    AS mean_alpha_imp_{label},
-        MEDIAN({diff}) AS median_alpha_imp_{label},
-        SUM(CASE WHEN {diff} > 0 THEN 1 ELSE 0 END) AS alpha_wins_{label}
-    """)
-
-alpha_imp_sql = f"SELECT COUNT(*) AS total, {','.join(alpha_imp_parts)} FROM all_data"
-alpha_imp_row = con.sql(alpha_imp_sql).fetchdf().iloc[0]
-
-alpha_imp_records = []
-for label in OPT_RETURN_LABELS:
-    wins = int(alpha_imp_row[f"alpha_wins_{label}"])
+    r = con.sql(f"""
+        SELECT
+            COUNT({diff})                               AS n,
+            AVG({diff})                                 AS mean,
+            MEDIAN({diff})                              AS median,
+            SUM(CASE WHEN {diff} > 0 THEN 1 ELSE 0 END) AS wins
+        FROM all_data
+    """).fetchdf().iloc[0]
+    n = int(r["n"])
     alpha_imp_records.append({
         "strategy": label,
-        "mean_alpha_improvement": round(alpha_imp_row[f"mean_alpha_imp_{label}"], 6),
-        "median_alpha_improvement": round(alpha_imp_row[f"median_alpha_imp_{label}"], 6),
-        "alpha_win_pct": round(wins / total * 100, 2),
+        "mean_alpha_improvement": round(r["mean"], 6),
+        "median_alpha_improvement": round(r["median"], 6),
+        "alpha_win_pct": pct(r["wins"], n),
     })
 
 alpha_imp_df = pd.DataFrame(alpha_imp_records).set_index("strategy")

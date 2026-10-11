@@ -1,0 +1,420 @@
+actor_label,count,pct_of_actor_addr,pct_of_all
+gnosis DAO/Protocol v1,140365,38.4385,4.2325
+OKX,99905,27.3586,3.0125
+Uniswap,35601,9.7492,1.0735
+Curve Finance,7078,1.9383,0.2134
+Coinbase,6747,1.8476,0.2034
+Binance,5969,1.6346,0.18
+Sushiswap,4334,1.1869,0.1307
+Huobi,2387,0.6537,0.072
+Gate,2299,0.6296,0.0693
+Kraken,2252,0.6167,0.0679
+Argent,2089,0.5721,0.063
+MakerDAO,1950,0.534,0.0588
+Instadapp,1886,0.5165,0.0569
+Balancer v1/v2,1731,0.474,0.0522
+Bitstamp,1471,0.4028,0.0444
+Bitfinex,1256,0.344,0.0379
+Aave v1/2/3/arc,1176,0.322,0.0355
+Bancor V2/V2.1/V3,1168,0.3199,0.0352
+Compound,1030,0.2821,0.0311
+Paribu,1022,0.2799,0.0308
+osl.com,943,0.2582,0.0284
+KuCoin & KuCoin Futures,860,0.2355,0.0259
+Tornado Cash,777,0.2128,0.0234
+Upbit,775,0.2122,0.0234
+Frax Finance Dex/Swap/Lend/Ether,723,0.198,0.0218
+Coinspot,718,0.1966,0.0217
+Bybit,684,0.1873,0.0206
+Nexo,680,0.1862,0.0205
+ShibaSwap,622,0.1703,0.0188
+Deribit,600,0.1643,0.0181
+Gemini,567,0.1553,0.0171
+Bitget,553,0.1514,0.0167
+Convex Finance,548,0.1501,0.0165
+BitGlobal (fka Bithumb),542,0.1484,0.0163
+Crypto.com,507,0.1388,0.0153
+Cointiger,494,0.1353,0.0149
+"PancakeSwap (AMM, v2, Stableswap) PancakeSwap StableSwap",488,0.1336,0.0147
+Korbit,406,0.1112,0.0122
+MaskEX,396,0.1084,0.0119
+Hop Protocol,385,0.1054,0.0116
+Copper,384,0.1052,0.0116
+Tokenize,367,0.1005,0.0111
+Stargate Finance,360,0.0986,0.0109
+Ftx,345,0.0945,0.0104
+"Dodo Exchange (Arbitrum, BSC)",344,0.0942,0.0104
+Hoo,323,0.0885,0.0097
+Bitkub,322,0.0882,0.0097
+ZB.com,318,0.0871,0.0096
+Defiswap,301,0.0824,0.0091
+Eigenlayer,297,0.0813,0.009
+"Kyber, KyberSwap (Classic/Elastic)",290,0.0794,0.0087
+BtcTurk PRO,287,0.0786,0.0087
+Galaxy Digital,285,0.078,0.0086
+HitBTC,284,0.0778,0.0086
+Phemex,280,0.0767,0.0084
+Poloniex,275,0.0753,0.0083
+Luno,271,0.0742,0.0082
+Bitvavo,262,0.0717,0.0079
+"Woo Network (Exchange, Earn)",253,0.0693,0.0076
+Bidesk,250,0.0685,0.0075
+Coindcx,248,0.0679,0.0075
+Celsius,248,0.0679,0.0075
+Blockchain.com,247,0.0676,0.0074
+CoinEx,247,0.0676,0.0074
+Etherfi,246,0.0674,0.0074
+SwissBorg,241,0.066,0.0073
+Paxos,241,0.066,0.0073
+Coinhako,241,0.066,0.0073
+MEXC Global,236,0.0646,0.0071
+Coinone,235,0.0644,0.0071
+Ambire Wallet,231,0.0633,0.007
+Integral,228,0.0624,0.0069
+Robinhood,219,0.06,0.0066
+Maverick,219,0.06,0.0066
+Youbank,217,0.0594,0.0065
+ProBit Global & Korea,211,0.0578,0.0064
+BitMart,210,0.0575,0.0063
+Bitpanda (fka coinimal),206,0.0564,0.0062
+Inverse Finance Frontier,202,0.0553,0.0061
+Bittrex,202,0.0553,0.0061
+Coinmetro,200,0.0548,0.006
+Coinw,198,0.0542,0.006
+Coinlist,197,0.0539,0.0059
+Bingbon/BingX,196,0.0537,0.0059
+Blockfi,189,0.0518,0.0057
+Revolut,186,0.0509,0.0056
+Celer Bridge,184,0.0504,0.0055
+Latoken,181,0.0496,0.0055
+Bitso,180,0.0493,0.0054
+Zonda,178,0.0487,0.0054
+BTCMarkets,176,0.0482,0.0053
+Badger DAO,175,0.0479,0.0053
+"mStable (CDP, Yield)",169,0.0463,0.0051
+1inch Network,168,0.046,0.0051
+LBank,163,0.0446,0.0049
+Fei Protocol,161,0.0441,0.0049
+Max Maicoin,159,0.0435,0.0048
+Bitbank,158,0.0433,0.0048
+Paraswap,157,0.043,0.0047
+Lido,157,0.043,0.0047
+Cobo,156,0.0427,0.0047
+Liquid,156,0.0427,0.0047
+AscendEX (fka BitMax),152,0.0416,0.0046
+Verse,151,0.0414,0.0046
+0x,149,0.0408,0.0045
+Gmo Coin,148,0.0405,0.0045
+Shakepay,147,0.0403,0.0044
+LlamaPay,146,0.04,0.0044
+Puffer,146,0.04,0.0044
+BigONE,146,0.04,0.0044
+Coincheck,145,0.0397,0.0044
+Bullish,145,0.0397,0.0044
+Quadrigacx,144,0.0394,0.0043
+Saddle Finance,143,0.0392,0.0043
+Hashflow,143,0.0392,0.0043
+Cake DeFi,140,0.0383,0.0042
+tBTC,140,0.0383,0.0042
+Stake.Com,139,0.0381,0.0042
+Indodax,139,0.0381,0.0042
+AltcoinTrader,136,0.0372,0.0041
+Bitforex,135,0.037,0.0041
+BitoPro,134,0.0367,0.004
+Redacted Protocol / Pirex,131,0.0359,0.004
+Wire Ex App,131,0.0359,0.004
+Bitcoin Suisse,131,0.0359,0.004
+Synthetix,130,0.0356,0.0039
+Portal,129,0.0353,0.0039
+Hotbit,128,0.0351,0.0039
+Prime Trust,128,0.0351,0.0039
+CoinJar Exchange,126,0.0345,0.0038
+Railgun,126,0.0345,0.0038
+Nucypher,125,0.0342,0.0038
+Rocket Pool,124,0.034,0.0037
+Uphold,121,0.0331,0.0036
+Okcoin,120,0.0329,0.0036
+Netcoins,120,0.0329,0.0036
+Ethereum Foundation,118,0.0323,0.0036
+SideShift,118,0.0323,0.0036
+Chainflip.io,117,0.032,0.0035
+Nexus Mutual,117,0.032,0.0035
+Farm Hero,116,0.0318,0.0035
+Bitflyer,115,0.0315,0.0035
+Rollbit,114,0.0312,0.0034
+BTSE,113,0.0309,0.0034
+B2Binpay,112,0.0307,0.0034
+Kelp Dao,109,0.0298,0.0033
+Prisma Finance,109,0.0298,0.0033
+Harvest Finance,108,0.0296,0.0033
+Aragon,108,0.0296,0.0033
+Mercado Bitcoin,106,0.029,0.0032
+Stader,103,0.0282,0.0031
+Synapse,103,0.0282,0.0031
+Loopring (AMM),101,0.0277,0.003
+Optics,99,0.0271,0.003
+Remitano,98,0.0268,0.003
+BitMEX,98,0.0268,0.003
+Memecoin,98,0.0268,0.003
+Biconomy/Hyphen,97,0.0266,0.0029
+Zipmex,96,0.0263,0.0029
+Paxful,95,0.026,0.0029
+Bitcasino,94,0.0257,0.0028
+Swell,94,0.0257,0.0028
+BitKan,94,0.0257,0.0028
+Solidly,93,0.0255,0.0028
+Vesper,92,0.0252,0.0028
+WazirX,92,0.0252,0.0028
+Bilaxy,91,0.0249,0.0027
+NobiteEx,89,0.0244,0.0027
+Ssv,89,0.0244,0.0027
+RenVM,89,0.0244,0.0027
+Wealthsimple,89,0.0244,0.0027
+CoinPayments.net,88,0.0241,0.0027
+Cex,85,0.0233,0.0026
+Hashkey Exchange,85,0.0233,0.0026
+WhiteBIT,84,0.023,0.0025
+Airswap,83,0.0227,0.0025
+bitcoin.de,82,0.0225,0.0025
+BloFin Exchange,82,0.0225,0.0025
+Coinbene,82,0.0225,0.0025
+Smardex,80,0.0219,0.0024
+Norwegian Block Exchange,80,0.0219,0.0024
+Alameda Research,79,0.0216,0.0024
+Kiln,79,0.0216,0.0024
+Centre (fka Circle),79,0.0216,0.0024
+ICONOMI,77,0.0211,0.0023
+ShapeShift,77,0.0211,0.0023
+Coinsquare,77,0.0211,0.0023
+Tokenlon (The Tokenized Bitcoin),76,0.0208,0.0023
+StakeWise,76,0.0208,0.0023
+Idex,76,0.0208,0.0023
+DFX Finance,76,0.0208,0.0023
+Kuna Exchange,74,0.0203,0.0022
+BIT,74,0.0203,0.0022
+LCX Exchange,73,0.02,0.0022
+Allbridge,73,0.02,0.0022
+CoinTR Pro,72,0.0197,0.0022
+dYdX,72,0.0197,0.0022
+Cryptopia,72,0.0197,0.0022
+Tether (USDT),72,0.0197,0.0022
+YoBit,72,0.0197,0.0022
+GoPax,72,0.0197,0.0022
+Peatio,71,0.0194,0.0021
+Magpie,71,0.0194,0.0021
+Youhodler,71,0.0194,0.0021
+Fuse,71,0.0194,0.0021
+Moloch Dao,69,0.0189,0.0021
+Mercatox,69,0.0189,0.0021
+Sportsbet.io,68,0.0186,0.0021
+Aofex,68,0.0186,0.0021
+TokoCrypto,68,0.0186,0.0021
+Hegic,68,0.0186,0.0021
+CoinFLEX,67,0.0183,0.002
+Idax,65,0.0178,0.002
+Biki,65,0.0178,0.002
+Monolith,65,0.0178,0.002
+Blast,65,0.0178,0.002
+Xt,64,0.0175,0.0019
+Bitrue,64,0.0175,0.0019
+Bitubu Exchange,64,0.0175,0.0019
+"Clipper (Ethereum, Polygon, Optimism)",63,0.0173,0.0019
+Aax,62,0.017,0.0019
+Splits,62,0.017,0.0019
+Linea,61,0.0167,0.0018
+Ceffu,61,0.0167,0.0018
+Chainup,61,0.0167,0.0018
+RskSwap,60,0.0164,0.0018
+Worldcoin,59,0.0162,0.0018
+Cryptonator.com,59,0.0162,0.0018
+MoonPay,57,0.0156,0.0017
+THORSwap,56,0.0153,0.0017
+DigiFinex,56,0.0153,0.0017
+Rhino.fi/deversifi,55,0.0151,0.0017
+EXMO,54,0.0148,0.0016
+CoinsPaid,54,0.0148,0.0016
+Renzo,53,0.0145,0.0016
+Across,51,0.014,0.0015
+Aztec,51,0.014,0.0015
+Incognito Chain,51,0.014,0.0015
+eToro,50,0.0137,0.0015
+Coinzoom,49,0.0134,0.0015
+NDAX,49,0.0134,0.0015
+Fairdesk,49,0.0134,0.0015
+Anchorage Digital,48,0.0131,0.0014
+Cashierest,48,0.0131,0.0014
+Zero Hash,48,0.0131,0.0014
+Kanga,47,0.0129,0.0014
+Betfury,47,0.0129,0.0014
+ChainPort,46,0.0126,0.0014
+Gravity Bridge,46,0.0126,0.0014
+Fixed Float,46,0.0126,0.0014
+CoW Protocol,46,0.0126,0.0014
+Wintermute,45,0.0123,0.0014
+Huobi Japan,45,0.0123,0.0014
+Matrixport,45,0.0123,0.0014
+Izumi/IziSwap/Izumi LiquidBox,45,0.0123,0.0014
+Yunbi,44,0.012,0.0013
+Litebit,44,0.012,0.0013
+Bitz,44,0.012,0.0013
+OTCBTC,44,0.012,0.0013
+JPEX,44,0.012,0.0013
+Kine Finance,44,0.012,0.0013
+Harmony,44,0.012,0.0013
+Changenow,43,0.0118,0.0013
+Roobet,43,0.0118,0.0013
+Alphapo,43,0.0118,0.0013
+Bitfront (fka Bitbox),42,0.0115,0.0013
+Bitlo,41,0.0112,0.0012
+BitVenus,41,0.0112,0.0012
+Tigergaming,41,0.0112,0.0012
+Voltage Finance,41,0.0112,0.0012
+Mercuryo.io,40,0.011,0.0012
+TradeOgre,40,0.011,0.0012
+Tokencan,39,0.0107,0.0012
+LayerZero,39,0.0107,0.0012
+Stakefish,38,0.0104,0.0011
+bitzlato,37,0.0101,0.0011
+Secret Network (Swap),37,0.0101,0.0011
+Flipster,37,0.0101,0.0011
+BarnBridge,37,0.0101,0.0011
+Sora Hashi,37,0.0101,0.0011
+Toobit,37,0.0101,0.0011
+Stex,36,0.0099,0.0011
+Bake,35,0.0096,0.0011
+Bibox,35,0.0096,0.0011
+deBridge,35,0.0096,0.0011
+Stafi,35,0.0096,0.0011
+Tidex,34,0.0093,0.001
+Paladin Finance,34,0.0093,0.001
+XBO.com,34,0.0093,0.001
+Nanopool,33,0.009,0.001
+Aex,31,0.0085,0.0009
+Coinstore,31,0.0085,0.0009
+Bitgo,31,0.0085,0.0009
+Yearn Finance,31,0.0085,0.0009
+Bitpie,30,0.0082,0.0009
+Arkham Intelligence,29,0.0079,0.0009
+Coins.ph,29,0.0079,0.0009
+Deepcoin,29,0.0079,0.0009
+Bit2c,28,0.0077,0.0008
+Lykke Exchange,28,0.0077,0.0008
+Coinsbit,26,0.0071,0.0008
+Duelbits,26,0.0071,0.0008
+Gamdom,25,0.0068,0.0008
+Bequant,25,0.0068,0.0008
+Fastex,25,0.0068,0.0008
+Thodex,24,0.0066,0.0007
+Pionex,24,0.0066,0.0007
+Cryptal,24,0.0066,0.0007
+ABCC,23,0.0063,0.0007
+Hotcoin Global,23,0.0063,0.0007
+Yieldification,23,0.0063,0.0007
+Exchsc,23,0.0063,0.0007
+Klever Exchange,23,0.0063,0.0007
+Currency,23,0.0063,0.0007
+Zoomex,23,0.0063,0.0007
+Nexus Protocol,22,0.006,0.0007
+RenrenBit,22,0.006,0.0007
+Polygon Bridge & Staking,22,0.006,0.0007
+Wex,22,0.006,0.0007
+Freewallet,21,0.0058,0.0006
+Sparrow,21,0.0058,0.0006
+Crex24,21,0.0058,0.0006
+Stakestone,21,0.0058,0.0006
+Dextop,21,0.0058,0.0006
+Swaap,21,0.0058,0.0006
+Oceanex,20,0.0055,0.0006
+Firi,20,0.0055,0.0006
+Qmall,20,0.0055,0.0006
+Rockx,19,0.0052,0.0006
+Backpack Exchange,19,0.0052,0.0006
+Ourbit,19,0.0052,0.0006
+Lemon Cash,19,0.0052,0.0006
+MetaMask,19,0.0052,0.0006
+P2Pb2B,19,0.0052,0.0006
+Stormgain,18,0.0049,0.0005
+Cryptex Finance,18,0.0049,0.0005
+Echelon Dao,18,0.0049,0.0005
+Lifi,18,0.0049,0.0005
+Delta Exchange/Spot,17,0.0047,0.0005
+Rainbet,17,0.0047,0.0005
+Bitunix Exchange,17,0.0047,0.0005
+Swapr,16,0.0044,0.0005
+Unsheth,16,0.0044,0.0005
+Socket,16,0.0044,0.0005
+Ethervista,15,0.0041,0.0005
+Anycoin Direct,15,0.0041,0.0005
+AntPool.com,14,0.0038,0.0004
+BTC.com,14,0.0038,0.0004
+Multichain,13,0.0036,0.0004
+Xeggex,13,0.0036,0.0004
+Orbiter Finance,13,0.0036,0.0004
+Erc4337,12,0.0033,0.0004
+1xBet,12,0.0033,0.0004
+Liquid Collective,12,0.0033,0.0004
+Aeroswap,12,0.0033,0.0004
+GDAC,11,0.003,0.0003
+BitPay.com,11,0.003,0.0003
+Simpleswap,10,0.0027,0.0003
+Dex-Trade,10,0.0027,0.0003
+Lazarus Group,10,0.0027,0.0003
+Bison Exchange,10,0.0027,0.0003
+Btc-E,9,0.0025,0.0003
+Node Dao,9,0.0025,0.0003
+Websea,9,0.0025,0.0003
+Carbon Defi,9,0.0025,0.0003
+Omgfin,9,0.0025,0.0003
+OSL Global,9,0.0025,0.0003
+Graviex,8,0.0022,0.0002
+Bitberry,7,0.0019,0.0002
+Valantis,7,0.0019,0.0002
+Mantle,6,0.0016,0.0002
+Txbit,6,0.0016,0.0002
+Anyfrax,6,0.0016,0.0002
+ExMarkets,6,0.0016,0.0002
+Quidax,5,0.0014,0.0002
+LeveX,5,0.0014,0.0002
+8888.com,5,0.0014,0.0002
+CloudBet.com,5,0.0014,0.0002
+Bifrost Dex/Liquid Crowdloan/Staking,5,0.0014,0.0002
+Babylon Finance,5,0.0014,0.0002
+FutureSwap,5,0.0014,0.0002
+Catex,5,0.0014,0.0002
+Decoin,5,0.0014,0.0002
+Icrypex,5,0.0014,0.0002
+Jubi,4,0.0011,0.0001
+Opnx,4,0.0011,0.0001
+Tokenmarket,4,0.0011,0.0001
+WEEX,4,0.0011,0.0001
+Blocktrades,4,0.0011,0.0001
+B2Bx,4,0.0011,0.0001
+Eigen Fx,4,0.0011,0.0001
+Zaif,4,0.0011,0.0001
+Mining Pool Hub,3,0.0008,0.0001
+Tokenomy,3,0.0008,0.0001
+Nonkyc.io,3,0.0008,0.0001
+Taiko,3,0.0008,0.0001
+Cobinhood,3,0.0008,0.0001
+Beaxy,3,0.0008,0.0001
+Forta Network,3,0.0008,0.0001
+Dsla Network,3,0.0008,0.0001
+Poolin (Mars),2,0.0005,0.0001
+Odos,2,0.0005,0.0001
+ClayStack,2,0.0005,0.0001
+Fcoin,2,0.0005,0.0001
+Aprobit,2,0.0005,0.0001
+Bitcoin Meester,2,0.0005,0.0001
+Umbria Narni Bridge,2,0.0005,0.0001
+Exchange A,2,0.0005,0.0001
+Spectrocoin,1,0.0003,0.0
+Everstake,1,0.0003,0.0
+HiBT,1,0.0003,0.0
+Dmex,1,0.0003,0.0
+Livecoin,1,0.0003,0.0
+Sarmay Exchange / arzjoo,1,0.0003,0.0
+GMO Japan,1,0.0003,0.0
+Thales,1,0.0003,0.0
+Bitrefill,1,0.0003,0.0
+Digital Surge,1,0.0003,0.0
+Mt Pelerin,1,0.0003,0.0

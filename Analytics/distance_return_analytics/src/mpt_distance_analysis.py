@@ -3,44 +3,73 @@
 mpt_distance_analysis.py
 
 Description:
-    Full-scale L1 distance analysis pipeline. Designed for ~239M rows,
-    128 GB RAM, 32 cores. Covers correlations, distribution analysis,
-    bucket breakdowns, and regression models (OLS, quantile, RF).
-    Engine: DuckDB + scikit-learn.
+    Full-scale L1 distance analysis pipeline. Covers correlations,
+    distribution analysis, bucket breakdowns, and regression models
+    (OLS, quantile, RF). Engine: DuckDB + scikit-learn.
+    Exact quantiles hold every value in memory, outside DuckDB's
+    memory_limit, so each quantile query covers a single column.
 
 Input:
-    Hive-partitioned parquet directory (ROOT) with block_number,
-    wallet_address, L1 distances, num_tokens, total_value_usd.
+    Hive-partitioned parquet directory (--root) with block_number,
+    wallet_address, L1 distances, holdings_short, total_value_usd.
+    num_tokens (portfolio size N) is the number of assets in
+    holdings_short, i.e. the optimised set, not 5_0's raw on-chain count.
 
 Output:
-    CSV exports + analysis_log.txt in OUTPUT_DIR.
+    CSV exports + analysis_log.txt in --out-dir.
+
+Usage:
+    python mpt_distance_analysis.py \
+        --root     <mpt-optimization-results-eth>/wallet_level \
+        --out-dir  <mpt-optimization-results-eth>/distance_analysis_results \
+        --temp-dir <duckdb_tmp> --threads 32 --mem 100GB
+    5+ robustness check: add --min-assets 5 and write to
+    <mpt-optimization-results-eth>/distance_analysis_results_gr_5.
 """
 
-import os, sys, time, json, warnings
+import argparse, os, sys, time, warnings
 from datetime import datetime
-from io import StringIO
-from contextlib import redirect_stdout
 
 import duckdb
 import numpy as np
 import pandas as pd
 from scipy import stats as sp_stats
 
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared"))
-from locations import Location
-
 warnings.filterwarnings("ignore")
 
 # -----------------------------------------------------------------------------
-# Config
+# Config (all paths come from the command line, no defaults)
 # -----------------------------------------------------------------------------
-ROOT = str(Location.MPT_DATA)
-OUTPUT_DIR = str(Location.MPT_DISTANCE_RESULTS)
+def parse_args():
+    p = argparse.ArgumentParser(
+        description="Full-scale L1 distance analysis of the MPT optimisation results."
+    )
+    p.add_argument("--root", type=str, required=True,
+                   help="Hive-partitioned wallet-level parquet directory (block_number=*/).")
+    p.add_argument("--out-dir", type=str, required=True,
+                   help="Output directory for CSVs and analysis_log.txt.")
+    p.add_argument("--temp-dir", type=str, required=True,
+                   help="DuckDB spill directory (keep it off the home fileset).")
+    p.add_argument("--threads", type=int, default=32)
+    p.add_argument("--mem", type=str, default="100GB",
+                   help="DuckDB memory_limit.")
+    p.add_argument("--min-assets", type=int, default=2,
+                   help="Keep wallets with at least this many assets (5 = robustness check).")
+    return p.parse_args()
+
+
+args = parse_args()
+if not os.path.isdir(args.root):
+    sys.exit(f"--root is not a directory: {args.root}")
+
+ROOT = args.root
+OUTPUT_DIR = args.out_dir
+TEMP_DIR = args.temp_dir
 SAMPLE_SIZE = 50_000_000          # 50M for correlations / regressions
 REGRESSION_SAMPLE = 10_000_000    # 10M for heavier models (RF, quantile)
-N_CORES = 32
+N_CORES = args.threads
+MEM_LIMIT = args.mem
+MIN_ASSETS = args.min_assets
 SEED = 42
 
 TARGETS_RAW = ["l1_gap_better_return", "l1_gap_safer_risk", "l1_gap_max_sharpe"]
@@ -59,6 +88,7 @@ DISTANCE_BUCKETS = [
 ]
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(TEMP_DIR, exist_ok=True)
 
 # -----------------------------------------------------------------------------
 # Logging helper – tee to console + file
@@ -92,19 +122,33 @@ def save_csv(df, name):
 # 1. Setup DuckDB
 # -----------------------------------------------------------------------------
 log("=" * 70)
-log("MPT DISTANCE ANALYSIS — FULL SCALE")
+if MIN_ASSETS > 2:
+    log(f"MPT DISTANCE ANALYSIS — FILTERED: num_tokens >= {MIN_ASSETS}")
+else:
+    log("MPT DISTANCE ANALYSIS — FULL SCALE")
 log("=" * 70)
+log(f"Input:    {ROOT}")
+log(f"Output:   {OUTPUT_DIR}")
+log(f"Temp dir: {TEMP_DIR}  (threads={N_CORES}, memory_limit={MEM_LIMIT})")
 log()
 
 t0 = time.time()
 con = duckdb.connect(database=":memory:")
 con.execute(f"SET threads = {N_CORES}")
-con.execute("SET memory_limit = '100GB'")
+con.execute(f"SET memory_limit = '{MEM_LIMIT}'")
+con.execute(f"SET temp_directory = '{TEMP_DIR}'")
 
+# num_tokens = assets in the optimised set (holdings_short). The stored
+# column is the raw on-chain count: it counts ETH and WETH separately and
+# includes assets dropped for too short a price history. Every wallet has at
+# least two, so the filter is only added for --min-assets above 2.
+min_assets_filter = (f"WHERE json_array_length(holdings_short) >= {MIN_ASSETS}"
+                     if MIN_ASSETS > 2 else "")
 con.execute(f"""
     CREATE VIEW all_data AS
-    SELECT *
+    SELECT * REPLACE (CAST(json_array_length(holdings_short) AS INTEGER) AS num_tokens)
     FROM read_parquet('{ROOT}/*/*.parquet', hive_partitioning=true)
+    {min_assets_filter}
 """)
 
 total_rows = con.sql("SELECT COUNT(*) AS n FROM all_data").fetchone()[0]
@@ -221,7 +265,9 @@ log("=" * 70)
 log("  4a. Zero-distance & near-zero counts ...")
 zero_sql = """
 SELECT
-    COUNT(*)                                                           AS total,
+    COUNT(l1_gap_better_return)                                        AS n_better_return,
+    COUNT(l1_gap_safer_risk)                                           AS n_safer_risk,
+    COUNT(l1_gap_max_sharpe)                                           AS n_max_sharpe,
 
     SUM(CASE WHEN l1_gap_better_return  = 0 THEN 1 ELSE 0 END)        AS exact0_better_return,
     SUM(CASE WHEN l1_gap_safer_risk     = 0 THEN 1 ELSE 0 END)        AS exact0_safer_risk,
@@ -233,18 +279,18 @@ SELECT
 FROM all_data
 """
 zdf = con.sql(zero_sql).fetchdf().iloc[0]
-total = zdf["total"]
 
+# Shares of the rows that have a distance for that optimisation.
 zero_results = []
 for label in TARGET_LABELS:
-    raw_col = f"l1_gap_{label}"
+    n = int(zdf[f"n_{label}"])
     e0 = int(zdf[f"exact0_{label}"])
     n0 = int(zdf[f"near0_{label}"])
     zero_results.append({
         "optimisation": label,
-        "exact_0_count": e0, "exact_0_pct": round(e0/total*100, 4),
-        "near_0_count_(0,1%]": n0, "near_0_pct_(0,1%]": round(n0/total*100, 4),
-        "combined_<=1%_count": e0+n0, "combined_<=1%_pct": round((e0+n0)/total*100, 4),
+        "exact_0_count": e0, "exact_0_pct": round(e0/n*100, 4),
+        "near_0_count_(0,1%]": n0, "near_0_pct_(0,1%]": round(n0/n*100, 4),
+        "combined_<=1%_count": e0+n0, "combined_<=1%_pct": round((e0+n0)/n*100, 4),
     })
 
 zero_df = pd.DataFrame(zero_results).set_index("optimisation")
@@ -259,6 +305,7 @@ for label in TARGET_LABELS:
     raw = f"l1_gap_{label}"
     pct_expr = f"({raw} / 2.0 * 100.0)"
     bucket_cases.append(f"""
+        COUNT({raw})                                                                             AS "{label}_n",
         SUM(CASE WHEN {raw} = 0                                               THEN 1 ELSE 0 END) AS "{label}_0",
         SUM(CASE WHEN {pct_expr} >  0 AND {pct_expr} <=  1                   THEN 1 ELSE 0 END) AS "{label}_0_1",
         SUM(CASE WHEN {pct_expr} >  1 AND {pct_expr} <= 20                   THEN 1 ELSE 0 END) AS "{label}_1_20",
@@ -268,19 +315,20 @@ for label in TARGET_LABELS:
         SUM(CASE WHEN {pct_expr} > 80 AND {pct_expr} <= 100                  THEN 1 ELSE 0 END) AS "{label}_80_100"
     """)
 
-dist_sql = f"SELECT COUNT(*) AS total, {','.join(bucket_cases)} FROM all_data"
+dist_sql = f"SELECT {','.join(bucket_cases)} FROM all_data"
 dist_row = con.sql(dist_sql).fetchdf().iloc[0]
 
 bucket_labels = ["0", "(0,1]", "(1,20]", "(20,40]", "(40,60]", "(60,80]", "(80,100]"]
 dist_records = []
 for label in TARGET_LABELS:
+    n = int(dist_row[f"{label}_n"])
     keys = [f"{label}_0", f"{label}_0_1", f"{label}_1_20",
             f"{label}_20_40", f"{label}_40_60", f"{label}_60_80", f"{label}_80_100"]
     for bkt, k in zip(bucket_labels, keys):
         cnt = int(dist_row[k])
         dist_records.append({
             "optimisation": label, "bucket": bkt,
-            "count": cnt, "pct": round(cnt/total*100, 2),
+            "count": cnt, "pct": round(cnt/n*100, 2),
         })
 
 dist_df = pd.DataFrame(dist_records)
@@ -307,26 +355,31 @@ for label in TARGET_LABELS:
     where_low = f"{pct_expr} <= 1"
     log(f"\n--- {label.upper()} (distance ≤1%) ---")
 
-    # 5a. Basic stats
+    # 5a. Basic stats; the medians one per query (exact quantiles hold every
+    # value in memory, outside DuckDB's memory_limit).
     stats_sql = f"""
     SELECT
         COUNT(*)                        AS n,
         AVG(num_tokens)                 AS mean_tokens,
-        MEDIAN(num_tokens)              AS median_tokens,
         MIN(num_tokens)                 AS min_tokens,
         MAX(num_tokens)                 AS max_tokens,
         STDDEV(num_tokens)              AS std_tokens,
         AVG(total_value_usd)            AS mean_value,
-        MEDIAN(total_value_usd)         AS median_value,
         MIN(total_value_usd)            AS min_value,
         MAX(total_value_usd)            AS max_value,
         STDDEV(total_value_usd)         AS std_value,
-        AVG(LN(1+total_value_usd))      AS mean_log_value,
-        MEDIAN(LN(1+total_value_usd))   AS median_log_value
+        AVG(LN(1+total_value_usd))      AS mean_log_value
     FROM all_data
     WHERE {where_low}
     """
     sdf = con.sql(stats_sql).fetchdf()
+    for name, expr in [("median_tokens", "num_tokens"),
+                       ("median_value", "total_value_usd"),
+                       ("median_log_value", "LN(1+total_value_usd)")]:
+        sdf[name] = con.sql(f"SELECT MEDIAN({expr}) FROM all_data WHERE {where_low}").fetchone()[0]
+    sdf = sdf[["n", "mean_tokens", "median_tokens", "min_tokens", "max_tokens", "std_tokens",
+               "mean_value", "median_value", "min_value", "max_value", "std_value",
+               "mean_log_value", "median_log_value"]]
     log_df(sdf.T.rename(columns={0: "value"}), f"  Stats for {label} (dist ≤1%):")
     save_csv(sdf.T.rename(columns={0: "value"}), f"low_dist_stats_{label}.csv")
 
@@ -384,9 +437,9 @@ for label in TARGET_LABELS:
 
     log(f"\n--- {label.upper()} ---")
 
-    bucket_stats_sql = f"""
-    SELECT
-        CASE
+    # Distances outside [0, 100] % keep their own 'NaN' row, as before.
+    bucket_sql = f"""
+        COALESCE(CASE
             WHEN {raw_col} = 0                                    THEN '0_exact'
             WHEN {pct_expr} >  0 AND {pct_expr} <=  1            THEN '(0,1]'
             WHEN {pct_expr} >  1 AND {pct_expr} <= 20            THEN '(1,20]'
@@ -394,25 +447,33 @@ for label in TARGET_LABELS:
             WHEN {pct_expr} > 40 AND {pct_expr} <= 60            THEN '(40,60]'
             WHEN {pct_expr} > 60 AND {pct_expr} <= 80            THEN '(60,80]'
             WHEN {pct_expr} > 80 AND {pct_expr} <= 100           THEN '(80,100]'
-        END AS dist_bucket,
-
-        COUNT(*)                       AS n,
-        AVG(num_tokens)                AS mean_tokens,
-        MEDIAN(num_tokens)             AS median_tokens,
-        AVG(total_value_usd)           AS mean_value_usd,
-        MEDIAN(total_value_usd)        AS median_value_usd,
-        AVG(LN(1+total_value_usd))     AS mean_log_value,
-        MEDIAN(LN(1+total_value_usd))  AS median_log_value,
-        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY num_tokens)  AS p25_tokens,
-        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY num_tokens)  AS p75_tokens,
-        PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY total_value_usd) AS p25_value,
-        PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY total_value_usd) AS p75_value
-    FROM all_data
-    WHERE {raw_col} IS NOT NULL
-    GROUP BY dist_bucket
-    ORDER BY dist_bucket
+        END, 'NaN') AS dist_bucket
     """
-    bkt_df = con.sql(bucket_stats_sql).fetchdf()
+    bkt_df = con.sql(f"""
+        SELECT {bucket_sql},
+               COUNT(*)                       AS n,
+               AVG(num_tokens)                AS mean_tokens,
+               AVG(total_value_usd)           AS mean_value_usd,
+               AVG(LN(1+total_value_usd))     AS mean_log_value
+        FROM all_data
+        WHERE {raw_col} IS NOT NULL
+        GROUP BY dist_bucket
+    """).fetchdf().set_index("dist_bucket")
+    # Quantiles one expression per query (see 5a), all of it in one list call.
+    for expr, qcols in [("num_tokens",            {0.25: "p25_tokens", 0.5: "median_tokens", 0.75: "p75_tokens"}),
+                        ("total_value_usd",       {0.25: "p25_value", 0.5: "median_value_usd", 0.75: "p75_value"}),
+                        ("LN(1+total_value_usd)", {0.5: "median_log_value"})]:
+        q = con.sql(f"""
+            SELECT {bucket_sql}, QUANTILE_CONT({expr}, {list(qcols)}) AS q
+            FROM all_data
+            WHERE {raw_col} IS NOT NULL
+            GROUP BY dist_bucket
+        """).fetchdf().set_index("dist_bucket")["q"]
+        for i, col in enumerate(qcols.values()):
+            bkt_df[col] = q.map(lambda v, i=i: v[i])
+    bkt_df = bkt_df[["n", "mean_tokens", "median_tokens", "mean_value_usd", "median_value_usd",
+                     "mean_log_value", "median_log_value",
+                     "p25_tokens", "p75_tokens", "p25_value", "p75_value"]].reset_index()
 
     # reorder
     order = ["0_exact", "(0,1]", "(1,20]", "(20,40]", "(40,60]", "(60,80]", "(80,100]"]
@@ -633,7 +694,7 @@ save_csv(cross_df.T.rename(columns={0: "pearson_r"}), "cross_target_correlation.
 log("\n  8b. Multi-optimal wallets (distance=0 for all 3 objectives)")
 multi_sql = """
 SELECT
-    COUNT(*) AS total,
+    COUNT(l1_gap_better_return + l1_gap_safer_risk + l1_gap_max_sharpe) AS total,  -- rows with all three distances
     SUM(CASE WHEN l1_gap_better_return = 0 AND l1_gap_safer_risk = 0 THEN 1 ELSE 0 END) AS opt_br_and_sr,
     SUM(CASE WHEN l1_gap_better_return = 0 AND l1_gap_max_sharpe = 0 THEN 1 ELSE 0 END) AS opt_br_and_ms,
     SUM(CASE WHEN l1_gap_safer_risk = 0    AND l1_gap_max_sharpe = 0 THEN 1 ELSE 0 END) AS opt_sr_and_ms,

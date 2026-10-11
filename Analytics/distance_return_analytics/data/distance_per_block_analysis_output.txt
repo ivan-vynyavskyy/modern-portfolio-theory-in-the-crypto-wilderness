@@ -1,0 +1,116 @@
+Input:    /path/to/mpt-optimization-results-eth/wallet_level  (72 blocks)
+Output:   /path/to/mpt-optimization-results-eth/distance_per_block_results
+Temp dir: /path/to/duckdb_tmp  (threads=32, memory_limit=100GB)
+
+Per-block statistics ...
+  [ 1/72] block 9193266 (2020-01-01): 3,917,721 wallets  (1s)
+  [ 2/72] block 9393154 (2020-02-01): 4,044,309 wallets  (2s)
+  [ 3/72] block 9581792 (2020-03-01): 4,154,581 wallets  (3s)
+  [ 4/72] block 9782602 (2020-04-01): 4,196,768 wallets  (4s)
+  [ 5/72] block 9976964 (2020-05-01): 4,550,922 wallets  (5s)
+  [ 6/72] block 10176690 (2020-06-01): 4,856,170 wallets  (6s)
+  [ 7/72] block 10370274 (2020-07-01): 4,744,628 wallets  (7s)
+  [ 8/72] block 10570485 (2020-08-01): 4,796,558 wallets  (9s)
+  [ 9/72] block 10771925 (2020-09-01): 4,925,847 wallets  (10s)
+  [10/72] block 10966874 (2020-10-01): 5,138,481 wallets  (11s)
+  [11/72] block 11167817 (2020-11-01): 5,311,717 wallets  (12s)
+  [12/72] block 11363270 (2020-12-01): 5,528,003 wallets  (13s)
+  [13/72] block 11565019 (2021-01-01): 5,786,060 wallets  (15s)
+  [14/72] block 11766939 (2021-02-01): 5,920,770 wallets  (16s)
+  [15/72] block 11948960 (2021-03-01): 6,274,687 wallets  (17s)
+  [16/72] block 12150245 (2021-04-01): 6,572,101 wallets  (19s)
+  [17/72] block 12344945 (2021-05-01): 6,929,172 wallets  (20s)
+  [18/72] block 12545219 (2021-06-01): 7,306,368 wallets  (22s)
+  [19/72] block 12738509 (2021-07-01): 7,567,913 wallets  (23s)
+  [20/72] block 12936340 (2021-08-01): 7,807,539 wallets  (25s)
+  [21/72] block 13136427 (2021-09-01): 8,149,767 wallets  (26s)
+  [22/72] block 13330090 (2021-10-01): 8,450,210 wallets  (28s)
+  [23/72] block 13527859 (2021-11-01): 8,886,900 wallets  (30s)
+  [24/72] block 13717847 (2021-12-01): 9,211,133 wallets  (32s)
+  [25/72] block 13916166 (2022-01-01): 9,389,070 wallets  (34s)
+  [26/72] block 14116761 (2022-02-01): 9,761,886 wallets  (36s)
+  [27/72] block 14297759 (2022-03-01): 10,169,895 wallets  (38s)
+  [28/72] block 14497034 (2022-04-01): 10,076,702 wallets  (39s)
+  [29/72] block 14688630 (2022-05-01): 10,288,803 wallets  (41s)
+  [30/72] block 14881677 (2022-06-01): 10,494,180 wallets  (43s)
+  [31/72] block 15053226 (2022-07-01): 10,616,776 wallets  (45s)
+  [32/72] block 15253306 (2022-08-01): 10,713,112 wallets  (47s)
+  [33/72] block 15449618 (2022-09-01): 10,748,420 wallets  (49s)
+  [34/72] block 15649595 (2022-10-01): 10,728,135 wallets  (51s)
+  [35/72] block 15871480 (2022-11-01): 10,948,106 wallets  (53s)
+  [36/72] block 16086234 (2022-12-01): 11,051,972 wallets  (55s)
+  [37/72] block 16308190 (2023-01-01): 11,022,039 wallets  (57s)
+  [38/72] block 16530248 (2023-02-01): 11,092,179 wallets  (59s)
+  [39/72] block 16730072 (2023-03-01): 11,216,790 wallets  (61s)
+  [40/72] block 16950603 (2023-04-01): 11,345,187 wallets  (63s)
+  [41/72] block 17162287 (2023-05-01): 11,489,691 wallets  (65s)
+  [42/72] block 17382266 (2023-06-01): 11,539,794 wallets  (67s)
+  [43/72] block 17595510 (2023-07-01): 11,762,889 wallets  (69s)
+  [44/72] block 17816434 (2023-08-01): 11,978,463 wallets  (71s)
+  [45/72] block 18037988 (2023-09-01): 12,076,866 wallets  (73s)
+  [46/72] block 18251965 (2023-10-01): 12,190,134 wallets  (76s)
+  [47/72] block 18473543 (2023-11-01): 12,334,760 wallets  (78s)
+  [48/72] block 18687851 (2023-12-01): 12,553,796 wallets  (80s)
+  [49/72] block 18908895 (2024-01-01): 12,835,801 wallets  (82s)
+  [50/72] block 19129889 (2024-02-01): 13,406,722 wallets  (84s)
+  [51/72] block 19336607 (2024-03-01): 13,606,114 wallets  (87s)
+  [52/72] block 19557289 (2024-04-01): 14,089,824 wallets  (89s)
+  [53/72] block 19771560 (2024-05-01): 14,357,593 wallets  (92s)
+  [54/72] block 19993250 (2024-06-01): 14,902,332 wallets  (94s)
+  [55/72] block 20207949 (2024-07-01): 15,085,341 wallets  (97s)
+  [56/72] block 20429973 (2024-08-01): 15,413,651 wallets  (99s)
+  [57/72] block 20651994 (2024-09-01): 15,720,278 wallets  (102s)
+  [58/72] block 20866919 (2024-10-01): 16,026,518 wallets  (105s)
+  [59/72] block 21089069 (2024-11-01): 16,019,262 wallets  (107s)
+  [60/72] block 21303934 (2024-12-01): 16,537,753 wallets  (110s)
+  [61/72] block 21525891 (2025-01-01): 16,984,033 wallets  (113s)
+  [62/72] block 21747950 (2025-02-01): 17,420,199 wallets  (115s)
+  [63/72] block 21948292 (2025-03-01): 17,753,724 wallets  (118s)
+  [64/72] block 22170335 (2025-04-01): 18,230,200 wallets  (121s)
+  [65/72] block 22385294 (2025-05-01): 18,559,561 wallets  (124s)
+  [66/72] block 22606143 (2025-06-01): 18,858,659 wallets  (127s)
+  [67/72] block 22820674 (2025-07-01): 19,116,670 wallets  (131s)
+  [68/72] block 23042514 (2025-08-01): 19,447,967 wallets  (133s)
+  [69/72] block 23264566 (2025-09-01): 20,035,490 wallets  (137s)
+  [70/72] block 23479244 (2025-10-01): 20,325,101 wallets  (140s)
+  [71/72] block 23700767 (2025-11-01): 20,786,899 wallets  (143s)
+  [72/72] block 23914921 (2025-12-01): 21,388,124 wallets  (147s)
+  → /path/to/mpt-optimization-results-eth/distance_per_block_results/per_block_distance_stats.csv  (648 rows)
+  → /path/to/mpt-optimization-results-eth/distance_per_block_results/per_block_distance_by_token_group.csv  (432 rows)
+  → /path/to/mpt-optimization-results-eth/distance_per_block_results/per_block_distance_by_token_bucket.csv  (1,512 rows)
+
+Threshold sweep ...
+  → /path/to/mpt-optimization-results-eth/distance_per_block_results/hypothesis_tests_threshold_sweep.csv  (15 rows)
+  → /path/to/mpt-optimization-results-eth/distance_per_block_results/hypothesis_tests_l1_by_token_group.csv  (3 rows)
+
+Pooled distance per N ...
+  better_return: 44s
+  safer_risk: 45s
+  max_sharpe: 44s
+  → /path/to/mpt-optimization-results-eth/distance_per_block_results/tokens_vs_dist_agg.csv  (2,097 rows)
+
+==============================================================================
+Time-averaged per-block mean / median distance (%), all wallets
+  better_return   mean  12.24   median   0.00
+  safer_risk      mean   7.11   median   0.00
+  max_sharpe      mean  41.86   median  43.94
+
+Paired tests by block, below vs at or above N (72 blocks)
+  N  strategy          mean<N   mean≥N       Δ  Cohen d  Wilcoxon p
+  3  better_return       4.3%    38.7%   +34.4     9.17    1.66e-13
+  3  safer_risk          0.0%    30.8%   +30.8     9.75    1.66e-13
+  3  max_sharpe         37.3%    56.8%   +19.6     2.72    1.66e-13
+  4  better_return       8.3%    49.2%   +40.8     9.71    1.66e-13
+  4  safer_risk          3.4%    42.3%   +39.0    11.95    1.66e-13
+  4  max_sharpe         39.4%    64.5%   +25.1     3.50    1.66e-13
+  5  better_return       9.8%    55.4%   +45.6     9.39    1.66e-13
+  5  safer_risk          4.8%    48.7%   +43.9    12.57    1.66e-13
+  5  max_sharpe         40.3%    68.7%   +28.4     3.75    1.66e-13
+  6  better_return      10.6%    59.8%   +49.1     9.60    1.66e-13
+  6  safer_risk          5.5%    53.1%   +47.5    13.13    1.66e-13
+  6  max_sharpe         40.8%    71.6%   +30.7     3.94    1.66e-13
+  7  better_return      11.1%    63.0%   +51.9     9.85    1.66e-13
+  7  safer_risk          6.0%    56.3%   +50.3    13.62    1.66e-13
+  7  max_sharpe         41.1%    73.7%   +32.6     4.12    1.66e-13
+
+Done in 281s

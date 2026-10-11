@@ -12,6 +12,10 @@
 #
 # Output:
 #   Single PDF (default: ../graphics/eoa_ca_over_time_dual_axis.pdf).
+#
+# Usage:
+#   Rscript plot_eoa_ca_over_time.R \
+#     --input ../data/output_accounts_eoa_vs_ca.csv
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -225,7 +229,7 @@ p <- ggplot(df, aes(x = date)) +
     labels = comma,
     name = "Externally owned accounts (EOA)",
     sec.axis = sec_axis(
-      trans = ~ . / scale_factor,
+      transform = ~ . / scale_factor,
       name = "Contract accounts (CA)",
       labels = comma
     )

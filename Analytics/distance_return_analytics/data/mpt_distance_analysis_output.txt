@@ -1,0 +1,567 @@
+[14:20:26] ======================================================================
+[14:20:26] MPT DISTANCE ANALYSIS — FULL SCALE
+[14:20:26] ======================================================================
+[14:20:26] Input:    /path/to/mpt-optimization-results-eth/wallet_level
+[14:20:26] Output:   /path/to/mpt-optimization-results-eth/distance_analysis_results
+[14:20:26] Temp dir: /path/to/duckdb_tmp_distance  (threads=32, memory_limit=100GB)
+
+[14:20:28] Total rows: 817,525,786
+
+[14:20:28] ======================================================================
+[14:20:28] SECTION 2: Full-data Pearson Correlation (all rows)
+[14:20:28] ======================================================================
+[14:20:28]   Computing Pearson on full data via DuckDB ...
+[14:21:15]   Done in 46.3s
+[14:21:15] Pearson r (full data, 0-100% scale):
+               better_return  safer_risk  max_sharpe
+feature                                             
+month                 0.0258      0.0490      0.0390
+log_value_usd         0.1877      0.2408      0.0770
+num_tokens            0.4205      0.5315      0.1997
+
+[14:21:15]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/pearson_full_data.csv
+[14:21:15] ======================================================================
+[14:21:15] SECTION 3: Large-sample correlation (50M rows) — Pearson + Spearman
+[14:21:15] ======================================================================
+[14:21:15]   Drawing 50M sample ...
+[14:25:52]   Sample loaded: 50,000,000 rows in 277.7s
+[14:28:08] Pearson r (sample 50M):
+target         better_return  max_sharpe  safer_risk
+feature                                             
+log_value_usd         0.2027     -0.1224      0.2158
+month                 0.0298      0.0844      0.0662
+num_tokens            0.4412      0.1842      0.6205
+
+[14:28:08] Spearman ρ (sample 50M):
+target         better_return  max_sharpe  safer_risk
+feature                                             
+log_value_usd         0.2282     -0.1392      0.1815
+month                 0.0332      0.0625      0.0533
+num_tokens            0.5864      0.2139      0.6699
+
+[14:28:08]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/correlation_sample.csv
+[14:28:08] ======================================================================
+[14:28:08] SECTION 4: Distance Distribution (full data)
+[14:28:08] ======================================================================
+[14:28:08]   4a. Zero-distance & near-zero counts ...
+[14:28:14] Zero-distance counts (exact 0  +  near-zero ≤1%):
+               exact_0_count  exact_0_pct  near_0_count_(0,1%]  near_0_pct_(0,1%]  combined_<=1%_count  combined_<=1%_pct
+optimisation                                                                                                             
+better_return       47262008       5.7811            522958566            63.9684            570220574            69.7496
+safer_risk          37399929       4.5748            603776426            73.8541            641176355            78.4289
+max_sharpe           6471039       0.7915            139500943            17.0638            145971982            17.8553
+
+[14:28:14]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/zero_distance_counts.csv
+[14:28:14]   4b. General distance distribution per bucket ...
+[14:28:26] Distance distribution (% of wallets per bucket):
+optimisation  better_return  max_sharpe  safer_risk
+bucket                                             
+0                      5.78        0.79        4.57
+(0,1]                 63.97       17.06       73.85
+(1,20]                 9.30       16.78        7.43
+(20,40]                6.59       12.92        5.61
+(40,60]                5.78       12.95        4.61
+(60,80]                5.08       27.45        2.70
+(80,100]               3.51       12.04        1.22
+
+[14:28:26] Distance distribution (count per bucket):
+optimisation  better_return  max_sharpe  safer_risk
+bucket                                             
+0                  47262008     6471039    37399929
+(0,1]             522958566   139500943   603776426
+(1,20]             76049141   137183883    60739297
+(20,40]            53836149   105632044    45876874
+(40,60]            47214540   105909244    37652760
+(60,80]            41491547   224379481    22102420
+(80,100]           28713739    98449021     9978073
+
+[14:28:26]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/distance_distribution_pct.csv
+[14:28:26]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/distance_distribution_count.csv
+[14:28:26] ======================================================================
+[14:28:26] SECTION 5: Profile of wallets with distance ≤1% (per optimisation)
+[14:28:26] ======================================================================
+[14:28:26] 
+--- BETTER_RETURN (distance ≤1%) ---
+[14:30:02]   Stats for better_return (dist ≤1%):
+                         value
+n                 5.702206e+08
+mean_tokens       2.042743e+00
+median_tokens     2.000000e+00
+min_tokens        2.000000e+00
+max_tokens        8.900000e+01
+std_tokens        2.388314e-01
+mean_value        3.472342e+04
+median_value      3.780799e+01
+min_value         0.000000e+00
+max_value         1.934965e+11
+std_value         3.687208e+07
+mean_log_value    3.827510e+00
+median_log_value  3.658626e+00
+
+[14:30:02]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/low_dist_stats_better_return.csv
+[14:30:32]   num_tokens distribution (top 20) for better_return dist ≤1%:
+    num_tokens        cnt    pct  cum_pct
+0            2  549043754  96.29    96.29
+1            3   18775781   3.29    99.58
+2            4    1891268   0.33    99.91
+3            5     352885   0.06    99.97
+4            6      95709   0.02    99.99
+5            7      32739   0.01   100.00
+6            8      13637   0.00   100.00
+7            9       6529   0.00   100.00
+8           10       3376   0.00   100.00
+9           11       1771   0.00   100.00
+10          12       1137   0.00   100.00
+11          13        628   0.00   100.00
+12          14        390   0.00   100.00
+13          15        268   0.00   100.00
+14          16        188   0.00   100.00
+15          17        122   0.00   100.00
+16          18         81   0.00   100.00
+17          19         69   0.00   100.00
+18          20         63   0.00   100.00
+19          21         33   0.00   100.00
+
+[14:30:32]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/low_dist_tokens_dist_better_return.csv
+[14:30:40]   Value distribution for better_return dist ≤1%:
+  value_bucket        cnt    pct
+0         $0-1   65168911  11.43
+1        $1-10  100808231  17.68
+2      $10-100  213348319  37.42
+3      $100-1K  127325052  22.33
+4      $1K-10K   47240795   8.28
+5    $10K-100K   12896033   2.26
+6     $100K-1M    2854177   0.50
+7         $1M+     579056   0.10
+
+[14:30:40]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/low_dist_value_dist_better_return.csv
+[14:30:40] 
+--- SAFER_RISK (distance ≤1%) ---
+[14:32:16]   Stats for safer_risk (dist ≤1%):
+                         value
+n                 6.411764e+08
+mean_tokens       2.034180e+00
+median_tokens     2.000000e+00
+min_tokens        2.000000e+00
+max_tokens        9.000000e+01
+std_tokens        2.045502e-01
+mean_value        3.473872e+04
+median_value      3.749514e+01
+min_value         0.000000e+00
+max_value         1.934965e+11
+std_value         3.573982e+07
+mean_log_value    3.823500e+00
+median_log_value  3.650532e+00
+
+[14:32:16]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/low_dist_stats_safer_risk.csv
+[14:32:45]   num_tokens distribution (top 20) for safer_risk dist ≤1%:
+    num_tokens        cnt    pct  cum_pct
+0            2  621306635  96.90    96.90
+1            3   18273581   2.85    99.75
+2            4    1301662   0.20    99.95
+3            5     208827   0.03    99.98
+4            6      52957   0.01    99.99
+5            7      17428   0.00    99.99
+6            8       7308   0.00    99.99
+7            9       3471   0.00    99.99
+8           10       1803   0.00    99.99
+9           11        984   0.00    99.99
+10          12        581   0.00    99.99
+11          13        377   0.00    99.99
+12          14        209   0.00    99.99
+13          15        132   0.00    99.99
+14          16        100   0.00    99.99
+15          17         72   0.00    99.99
+16          18         48   0.00    99.99
+17          19         45   0.00    99.99
+18          20         33   0.00    99.99
+19          21         13   0.00    99.99
+
+[14:32:45]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/low_dist_tokens_dist_safer_risk.csv
+[14:32:53]   Value distribution for safer_risk dist ≤1%:
+  value_bucket        cnt    pct
+0         $0-1   74510476  11.62
+1        $1-10  114203063  17.81
+2      $10-100  237665090  37.07
+3      $100-1K  142445329  22.22
+4      $1K-10K   53711797   8.38
+5    $10K-100K   14769648   2.30
+6     $100K-1M    3212975   0.50
+7         $1M+     657977   0.10
+
+[14:32:53]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/low_dist_value_dist_safer_risk.csv
+[14:32:53] 
+--- MAX_SHARPE (distance ≤1%) ---
+[14:34:14]   Stats for max_sharpe (dist ≤1%):
+                         value
+n                 1.459720e+08
+mean_tokens       2.035863e+00
+median_tokens     2.000000e+00
+min_tokens        2.000000e+00
+max_tokens        4.900000e+01
+std_tokens        2.153262e-01
+mean_value        5.827903e+04
+median_value      3.231365e+01
+min_value         0.000000e+00
+max_value         1.934965e+11
+std_value         5.308740e+07
+mean_log_value    3.803809e+00
+median_log_value  3.505967e+00
+
+[14:34:14]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/low_dist_stats_max_sharpe.csv
+[14:34:42]   num_tokens distribution (top 20) for max_sharpe dist ≤1%:
+    num_tokens        cnt    pct  cum_pct
+0            2  141341201  96.83    96.83
+1            3    4174599   2.86    99.69
+2            4     360645   0.25    99.94
+3            5      66381   0.05    99.99
+4            6      17786   0.01   100.00
+5            7       6080   0.00   100.00
+6            8       2537   0.00   100.00
+7            9       1311   0.00   100.00
+8           10        619   0.00   100.00
+9           11        323   0.00   100.00
+10          12        186   0.00   100.00
+11          13        111   0.00   100.00
+12          14         57   0.00   100.00
+13          15         43   0.00   100.00
+14          16         22   0.00   100.00
+15          17         19   0.00   100.00
+16          18         16   0.00   100.00
+17          19         10   0.00   100.00
+18          20         12   0.00   100.00
+19          21          2   0.00   100.00
+
+[14:34:42]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/low_dist_tokens_dist_max_sharpe.csv
+[14:34:51]   Value distribution for max_sharpe dist ≤1%:
+  value_bucket       cnt    pct
+0         $0-1  22301866  15.28
+1        $1-10  24758165  16.96
+2      $10-100  49557769  33.95
+3      $100-1K  29062467  19.91
+4      $1K-10K  15167095  10.39
+5    $10K-100K   4178569   2.86
+6     $100K-1M    787466   0.54
+7         $1M+    158585   0.11
+
+[14:34:51]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/low_dist_value_dist_max_sharpe.csv
+[14:34:51] ======================================================================
+[14:34:51] SECTION 6: Wallet characteristics per distance bucket
+[14:34:51] ======================================================================
+[14:34:51] 
+--- BETTER_RETURN ---
+[14:36:35]   Bucket characteristics for better_return:
+                     n  mean_tokens  median_tokens  mean_value_usd  median_value_usd  mean_log_value  median_log_value  p25_tokens  p75_tokens  p25_value  p75_value
+dist_bucket                                                                                                                                                         
+0_exact       47262008         2.00            2.0        28491.34             32.65            3.66              3.52         2.0         2.0       5.91     149.62
+(0,1]        522958566         2.05            2.0        35286.64             38.30            3.84              3.67         2.0         2.0       6.72     197.74
+(1,20]        76049141         3.03            3.0        44487.06            102.12            4.84              4.64         2.0         3.0      17.52     780.61
+(20,40]       53836149         3.35            3.0        45056.72            107.26            4.87              4.68         2.0         4.0      18.06     771.83
+(40,60]       47214540         3.71            3.0        59082.31            153.98            5.18              5.04         2.0         4.0      21.96    1290.44
+(60,80]       41491547         4.04            3.0        96647.65            109.57            4.87              4.71         2.0         4.0      14.47    1031.72
+(80,100]      28713739         6.14            4.0       375293.85            396.26            5.86              5.98         3.0         7.0      36.72    2973.54
+NaN                 96        13.41            9.0         6677.49             93.88            5.06              4.55         6.0        15.0      19.77     836.02
+
+[14:36:35]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/bucket_stats_better_return.csv
+[14:37:05]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/bucket_token_dist_better_return.csv
+[14:37:05] 
+--- SAFER_RISK ---
+[14:38:50]   Bucket characteristics for safer_risk:
+                     n  mean_tokens  median_tokens  mean_value_usd  median_value_usd  mean_log_value  median_log_value  p25_tokens  p75_tokens  p25_value  p75_value
+dist_bucket                                                                                                                                                         
+0_exact       37399929         2.00            2.0         9542.49             30.76            3.53              3.46         2.0         2.0       6.24     116.07
+(0,1]        603776426         2.04            2.0        36299.46             38.08            3.84              3.67         2.0         2.0       6.47     202.82
+(1,20]        60739297         3.42            3.0        56307.15            166.73            5.28              5.12         3.0         4.0      26.58    1303.37
+(20,40]       45876874         4.00            3.0        52598.73            185.38            5.35              5.23         3.0         4.0      30.92    1325.90
+(40,60]       37652760         4.88            4.0        95388.35            272.63            5.64              5.61         3.0         5.0      37.74    1909.71
+(60,80]       22102420         6.36            5.0       168288.67            449.09            6.03              6.11         3.0         7.0      54.60    2953.61
+(80,100]       9978073         7.50            5.0       778366.13            664.99            6.35              6.50         3.0         8.0      63.51    4509.87
+NaN                  7        11.43            9.0         2854.93             89.37            4.93              4.50         9.0        12.0      56.32     176.44
+
+[14:38:50]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/bucket_stats_safer_risk.csv
+[14:39:20]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/bucket_token_dist_safer_risk.csv
+[14:39:20] 
+--- MAX_SHARPE ---
+[14:40:51]   Bucket characteristics for max_sharpe:
+                     n  mean_tokens  median_tokens  mean_value_usd  median_value_usd  mean_log_value  median_log_value  p25_tokens  p75_tokens  p25_value  p75_value
+dist_bucket                                                                                                                                                         
+0_exact        6471039         2.00            2.0        62057.03             31.08            3.67              3.47         2.0         2.0       3.85     198.42
+(0,1]        139500943         2.04            2.0        58103.78             32.37            3.81              3.51         2.0         2.0       4.48     263.23
+(1,20]       137183883         2.27            2.0        29006.68             60.02            4.23              4.11         2.0         2.0      10.33     313.00
+(20,40]      105632044         2.41            2.0        36180.91             53.33            4.17              4.00         2.0         2.0      10.91     257.77
+(40,60]      105909244         2.64            2.0        30476.93             51.47            4.15              3.96         2.0         3.0       9.96     252.44
+(60,80]      224379481         2.41            2.0        34448.68             43.10            3.99              3.79         2.0         2.0       7.51     260.53
+(80,100]      98449021         4.18            3.0       161697.91            164.18            5.24              5.11         2.0         4.0      19.05    1635.03
+NaN                131        13.89            7.0         9092.34             44.76            4.58              3.82         6.0        15.0      11.42     562.53
+
+[14:40:51]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/bucket_stats_max_sharpe.csv
+[14:41:20]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/bucket_token_dist_max_sharpe.csv
+[14:41:20] ======================================================================
+[14:41:20] SECTION 7: Regression models
+[14:41:20] ======================================================================
+[14:41:20]   Drawing 10M sample for regression ...
+[14:42:45]   Regression sample: 10,000,000 rows in 85.1s
+[14:42:45] 
+  --- 7a. OLS Regression ---
+[14:42:47] 
+  OLS: better_return
+[14:42:47]   R² = 0.2046,  Adj-R² = 0.2046,  N = 10,000,000
+[14:42:47]   Coefficients (better_return):
+                   coef   std_err       t_stat  p_value significant
+const         -5.909756  0.014856  -397.810717      0.0         ***
+month         -0.039522  0.000286  -138.215088      0.0         ***
+log_value_usd  1.584056  0.002579   614.329556      0.0         ***
+num_tokens     5.479752  0.004116  1331.247624      0.0         ***
+
+[14:42:47]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/ols_coefs_better_return.csv
+[14:42:49] 
+  OLS: safer_risk
+[14:42:49]   R² = 0.3299,  Adj-R² = 0.3298,  N = 10,000,000
+[14:42:49]   Coefficients (safer_risk):
+                    coef   std_err       t_stat  p_value significant
+const         -10.022190  0.009464 -1058.954003      0.0         ***
+month           0.017842  0.000182    97.944129      0.0         ***
+log_value_usd   0.850267  0.001643   517.599647      0.0         ***
+num_tokens      5.211178  0.002622  1987.199016      0.0         ***
+
+[14:42:49]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/ols_coefs_safer_risk.csv
+[14:42:51] 
+  OLS: max_sharpe
+[14:42:51]   R² = 0.0624,  Adj-R² = 0.0624,  N = 10,000,000
+[14:42:51]   Coefficients (max_sharpe):
+                    coef   std_err       t_stat  p_value significant
+const          28.075435  0.019980  1405.161957      0.0         ***
+month           0.163900  0.000385   426.178361      0.0         ***
+log_value_usd  -0.791220  0.003468  -228.150474      0.0         ***
+num_tokens      3.672826  0.005536   663.424127      0.0         ***
+
+[14:42:51]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/ols_coefs_max_sharpe.csv
+[14:42:51] 
+  OLS Summary:
+                   R2  Adj_R2      F_stat  F_pvalue
+target                                             
+better_return  0.2046  0.2046   857221.55       0.0
+safer_risk     0.3299  0.3298  1640677.70       0.0
+max_sharpe     0.0624  0.0624   222008.18       0.0
+
+[14:42:51]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/ols_summary.csv
+[14:42:51] 
+  --- 7b. Quantile Regression ---
+[14:42:52]   Quantile regression on 2M rows
+[14:42:52]   QuantReg: better_return, q=0.25 ...
+[14:43:07]   QuantReg coefficients (better_return, q=0.25):
+                    coef   std_err        t_stat   p_value  quantile         target significant
+Intercept     -11.195531  0.000271 -41360.928258  0.000000      0.25  better_return         ***
+month          -0.000000  0.000004     -0.000785  0.999373      0.25  better_return            
+log_value_usd   0.000000  0.000042      0.000937  0.999252      0.25  better_return            
+num_tokens      5.597765  0.000069  81269.913021  0.000000      0.25  better_return         ***
+
+[14:43:07]   QuantReg: better_return, q=0.50 ...
+[14:43:23]   QuantReg coefficients (better_return, q=0.5):
+                    coef   std_err         t_stat   p_value  quantile         target significant
+Intercept     -24.213532  0.000237 -102115.940313  0.000000       0.5  better_return         ***
+month          -0.000000  0.000005      -0.001291  0.998970       0.5  better_return            
+log_value_usd   0.000000  0.000042       0.002151  0.998284       0.5  better_return            
+num_tokens     12.106766  0.000060  203368.612686  0.000000       0.5  better_return         ***
+
+[14:43:23]   QuantReg: better_return, q=0.75 ...
+[14:43:35]   QuantReg coefficients (better_return, q=0.75):
+                    coef   std_err        t_stat  p_value  quantile         target significant
+Intercept     -45.766109  0.002637 -17355.460607      0.0      0.75  better_return         ***
+month          -0.011825  0.000063   -188.588139      0.0      0.75  better_return         ***
+log_value_usd   0.945096  0.000569   1660.442259      0.0      0.75  better_return         ***
+num_tokens     22.910556  0.000491  46671.951334      0.0      0.75  better_return         ***
+
+[14:43:35]   QuantReg: safer_risk, q=0.25 ...
+[14:43:47]   QuantReg coefficients (safer_risk, q=0.25):
+                    coef  std_err        t_stat  p_value  quantile      target significant
+Intercept     -10.277139      0.0 -2.107649e+11      0.0      0.25  safer_risk         ***
+month          -0.000000      0.0 -5.545585e+02      0.0      0.25  safer_risk         ***
+log_value_usd   0.000000      0.0  8.693066e+02      0.0      0.25  safer_risk         ***
+num_tokens      5.138569      0.0  3.953338e+11      0.0      0.25  safer_risk         ***
+
+[14:43:47]   QuantReg: safer_risk, q=0.50 ...
+[14:44:00]   QuantReg coefficients (safer_risk, q=0.5):
+                    coef  std_err        t_stat  p_value  quantile      target significant
+Intercept     -20.915236      0.0 -4.092447e+10      0.0       0.5  safer_risk         ***
+month          -0.000000      0.0 -5.865336e+01      0.0       0.5  safer_risk         ***
+log_value_usd   0.000000      0.0  2.205803e+02      0.0       0.5  safer_risk         ***
+num_tokens     10.457618      0.0  8.150297e+10      0.0       0.5  safer_risk         ***
+
+[14:44:00]   QuantReg: safer_risk, q=0.75 ...
+[14:44:17]   QuantReg coefficients (safer_risk, q=0.75):
+                    coef  std_err  t_stat  p_value  quantile      target significant
+Intercept     -38.163545      NaN     NaN      NaN      0.75  safer_risk            
+month           0.000000      NaN     NaN      NaN      0.75  safer_risk            
+log_value_usd   0.000000      NaN     NaN      NaN      0.75  safer_risk            
+num_tokens     19.081773      NaN     NaN      NaN      0.75  safer_risk            
+
+[14:44:17]   QuantReg: max_sharpe, q=0.25 ...
+[14:44:33]   QuantReg coefficients (max_sharpe, q=0.25):
+                   coef   std_err      t_stat  p_value  quantile      target significant
+Intercept     -1.992555  0.045769  -43.535142      0.0      0.25  max_sharpe         ***
+month         -0.111984  0.000797 -140.458579      0.0      0.25  max_sharpe         ***
+log_value_usd -0.491351  0.007206  -68.190488      0.0      0.25  max_sharpe         ***
+num_tokens     7.349932  0.015599  471.189405      0.0      0.25  max_sharpe         ***
+
+[14:44:33]   QuantReg: max_sharpe, q=0.50 ...
+[14:44:46]   QuantReg coefficients (max_sharpe, q=0.5):
+                    coef   std_err      t_stat  p_value  quantile      target significant
+Intercept      19.820085  0.067736  292.605948      0.0       0.5  max_sharpe         ***
+month           0.222578  0.001344  165.634933      0.0       0.5  max_sharpe         ***
+log_value_usd  -1.958610  0.012083 -162.101861      0.0       0.5  max_sharpe         ***
+num_tokens      7.573428  0.017006  445.338798      0.0       0.5  max_sharpe         ***
+
+[14:44:46]   QuantReg: max_sharpe, q=0.75 ...
+[14:45:03]   QuantReg coefficients (max_sharpe, q=0.75):
+                    coef   std_err      t_stat  p_value  quantile      target significant
+Intercept      44.034876  0.062335  706.425219      0.0      0.75  max_sharpe         ***
+month           0.432499  0.001173  368.783194      0.0      0.75  max_sharpe         ***
+log_value_usd  -1.413762  0.011861 -119.193822      0.0      0.75  max_sharpe         ***
+num_tokens      5.021536  0.010999  456.529767      0.0      0.75  max_sharpe         ***
+
+[14:45:03]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/quantile_regression_all.csv
+[14:45:03] 
+  --- 7c. Random Forest (feature importance) ---
+[14:45:04]   Random Forest on 2M rows, 32 cores
+[14:45:04] 
+  Training RF for better_return ...
+[14:45:30]   RF better_return: R²=0.5050, MAE=9.60  (26.5s)
+[14:45:30]   Feature importances (better_return):
+         feature  importance         target  R2_test  MAE_test
+2     num_tokens      0.7874  better_return    0.505       9.6
+1  log_value_usd      0.1288  better_return    0.505       9.6
+0          month      0.0837  better_return    0.505       9.6
+
+[14:45:30] 
+  Training RF for safer_risk ...
+[14:45:47]   RF safer_risk: R²=0.6844, MAE=3.27  (16.6s)
+[14:45:47]   Feature importances (safer_risk):
+         feature  importance      target  R2_test  MAE_test
+2     num_tokens      0.9530  safer_risk   0.6844      3.27
+1  log_value_usd      0.0303  safer_risk   0.6844      3.27
+0          month      0.0167  safer_risk   0.6844      3.27
+
+[14:45:47] 
+  Training RF for max_sharpe ...
+[14:46:11]   RF max_sharpe: R²=0.2580, MAE=19.65  (24.7s)
+[14:46:11]   Feature importances (max_sharpe):
+         feature  importance      target  R2_test  MAE_test
+1  log_value_usd      0.3566  max_sharpe    0.258     19.65
+0          month      0.3382  max_sharpe    0.258     19.65
+2     num_tokens      0.3053  max_sharpe    0.258     19.65
+
+[14:46:11]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/random_forest_importance.csv
+[14:46:11] ======================================================================
+[14:46:11] SECTION 8: Additional Analytics
+[14:46:11] ======================================================================
+[14:46:11] 
+  8a. Cross-target correlation (how correlated are the 3 distances?)
+[14:46:16]   Cross-target Pearson (full data):
+            pearson_r
+corr_br_sr     0.5944
+corr_br_ms     0.3663
+corr_sr_ms     0.2704
+
+[14:46:16]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/cross_target_correlation.csv
+[14:46:16] 
+  8b. Multi-optimal wallets (distance=0 for all 3 objectives)
+[14:46:21]   Total wallets: 817,525,786.0
+[14:46:21]   opt_br_and_sr: 8,895,274 (1.09%)
+[14:46:21]   opt_br_and_ms: 1,319,467 (0.16%)
+[14:46:21]   opt_sr_and_ms: 289,048 (0.04%)
+[14:46:21]   opt_all_3: 139,350 (0.02%)
+[14:46:21]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/multi_optimal_wallets.csv
+[14:46:21] 
+  8c. Extended OLS with polynomial + interaction features
+[14:46:23] 
+  Extended OLS: better_return  R² = 0.3876 (vs base OLS R² above)
+[14:46:23]   Extended OLS coefficients (better_return):
+                         coef   std_err       t_stat  p_value significant
+const              -80.228982  0.047991 -1671.739336      0.0         ***
+month               -0.060948  0.000251  -242.606740      0.0         ***
+log_value_usd        0.999941  0.003557   281.137007      0.0         ***
+num_tokens          -4.040103  0.013484  -299.616975      0.0         ***
+num_tokens_sq        0.005748  0.000019   301.355453      0.0         ***
+log_value_x_tokens  -0.077643  0.001058   -73.378621      0.0         ***
+log_num_tokens      84.517856  0.058866  1435.755837      0.0         ***
+
+[14:46:23]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/ols_extended_coefs_better_return.csv
+[14:46:25] 
+  Extended OLS: safer_risk  R² = 0.6394 (vs base OLS R² above)
+[14:46:25]   Extended OLS coefficients (safer_risk):
+                         coef   std_err       t_stat  p_value significant
+const              -76.480123  0.025561 -2992.076302      0.0         ***
+month               -0.001470  0.000134   -10.986748      0.0         ***
+log_value_usd        0.172281  0.001894    90.942984      0.0         ***
+num_tokens          -3.768479  0.007182  -524.719046      0.0         ***
+num_tokens_sq        0.004885  0.000010   480.848242      0.0         ***
+log_value_x_tokens  -0.011670  0.000564   -20.706824      0.0         ***
+log_num_tokens      76.536609  0.031353  2441.114460      0.0         ***
+
+[14:46:25]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/ols_extended_coefs_safer_risk.csv
+[14:46:27] 
+  Extended OLS: max_sharpe  R² = 0.1074 (vs base OLS R² above)
+[14:46:27]   Extended OLS coefficients (max_sharpe):
+                         coef   std_err      t_stat  p_value significant
+const              -16.086344  0.071781 -224.101724      0.0         ***
+month                0.151241  0.000376  402.500139      0.0         ***
+log_value_usd       -1.667704  0.005320 -313.482584      0.0         ***
+num_tokens          -3.840589  0.020169 -190.424286      0.0         ***
+num_tokens_sq        0.003794  0.000029  132.995497      0.0         ***
+log_value_x_tokens   0.156239  0.001583   98.720845      0.0         ***
+log_num_tokens      53.958359  0.088048  612.831965      0.0         ***
+
+[14:46:27]   → saved /path/to/mpt-optimization-results-eth/distance_analysis_results/ols_extended_coefs_max_sharpe.csv
+[14:46:27] 
+  8d. Single-token wallets (num_tokens = 1)
+[14:47:02]   Single-token wallets: 0 (0.00% of all)
+[14:47:02]   No single-token wallets found — checking minimum token count ...
+[14:47:21]   Min num_tokens = 2, Mode = 2
+[14:47:21] 
+  Smallest-portfolio wallets (num_tokens = 2):
+[14:47:55]   Wallets with 2 tokens: 621,307,056 (76.00% of all)
+[14:47:55]   opt_better_return at dist=0: 47,255,403 (7.61% of 2-token wallets)
+[14:47:55]   opt_safer_risk at dist=0: 37,381,010 (6.02% of 2-token wallets)
+[14:47:55]   opt_max_sharpe at dist=0: 6,471,038 (1.04% of 2-token wallets)
+
+[14:47:55] ======================================================================
+[14:47:55] ANALYSIS COMPLETE — 27.5 minutes
+[14:47:55] All results saved to: /path/to/mpt-optimization-results-eth/distance_analysis_results
+[14:47:55] ======================================================================
+[14:47:55] 
+Output files:
+[14:47:55]   analysis_log.txt                                         32,158 bytes
+[14:47:55]   bucket_stats_better_return.csv                              836 bytes
+[14:47:55]   bucket_stats_max_sharpe.csv                                 825 bytes
+[14:47:55]   bucket_stats_safer_risk.csv                                 831 bytes
+[14:47:55]   bucket_token_dist_better_return.csv                      31,728 bytes
+[14:47:55]   bucket_token_dist_max_sharpe.csv                         29,048 bytes
+[14:47:55]   bucket_token_dist_safer_risk.csv                         32,915 bytes
+[14:47:55]   correlation_sample.csv                                      384 bytes
+[14:47:55]   cross_target_correlation.csv                                102 bytes
+[14:47:55]   distance_distribution_count.csv                             297 bytes
+[14:47:55]   distance_distribution_pct.csv                               214 bytes
+[14:47:55]   low_dist_stats_better_return.csv                            332 bytes
+[14:47:55]   low_dist_stats_max_sharpe.csv                               331 bytes
+[14:47:55]   low_dist_stats_safer_risk.csv                               330 bytes
+[14:47:55]   low_dist_tokens_dist_better_return.csv                      878 bytes
+[14:47:55]   low_dist_tokens_dist_max_sharpe.csv                         625 bytes
+[14:47:55]   low_dist_tokens_dist_safer_risk.csv                         778 bytes
+[14:47:55]   low_dist_value_dist_better_return.csv                       194 bytes
+[14:47:55]   low_dist_value_dist_max_sharpe.csv                          192 bytes
+[14:47:55]   low_dist_value_dist_safer_risk.csv                          193 bytes
+[14:47:55]   multi_optimal_wallets.csv                                   126 bytes
+[14:47:55]   ols_coefs_better_return.csv                                 350 bytes
+[14:47:55]   ols_coefs_max_sharpe.csv                                    349 bytes
+[14:47:55]   ols_coefs_safer_risk.csv                                    350 bytes
+[14:47:55]   ols_extended_coefs_better_return.csv                        606 bytes
+[14:47:55]   ols_extended_coefs_max_sharpe.csv                           598 bytes
+[14:47:55]   ols_extended_coefs_safer_risk.csv                           641 bytes
+[14:47:55]   ols_summary.csv                                             153 bytes
+[14:47:55]   pearson_full_data.csv                                       135 bytes
+[14:47:55]   quantile_regression_all.csv                               3,380 bytes
+[14:47:55]   random_forest_importance.csv                                541 bytes
+[14:47:55]   zero_distance_counts.csv                                    310 bytes
+
+Done.

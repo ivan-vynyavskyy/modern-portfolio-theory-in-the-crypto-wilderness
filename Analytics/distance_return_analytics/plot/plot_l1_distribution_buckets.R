@@ -9,12 +9,17 @@
 #     B - Tile heatmap with percentage labels.
 #
 # Input:
-#   CSV with columns: strategy, l1_bucket, count, pct (or similar
-#   aggregation).
+#   distance_distribution_pct.csv of mpt_distance_analysis.py (columns:
+#   bucket, better_return, max_sharpe, safer_risk; % of accounts).
 #
 # Output:
 #   Two PDFs (default: ../graphics/l1_distribution_grouped.pdf and
 #   ../graphics/l1_distribution_heatmap.pdf).
+#
+# Paper (Sec. 5) version of variant A, legend inside, reduced height,
+# slightly larger bar labels:
+#   Rscript plot_l1_distribution_buckets.R --legend inside --height 2.6 \
+#     --label-size 3.3
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -28,6 +33,7 @@ suppressPackageStartupMessages({
 # -----------------------------------------------------------------------------
 # CONSTANTS
 # -----------------------------------------------------------------------------
+DEFAULT_IN_CSV <- "../data/distance_analysis_results/distance_distribution_pct.csv"
 DEFAULT_OUT_A <- "../graphics/l1_distribution_grouped.pdf"
 DEFAULT_OUT_B <- "../graphics/l1_distribution_heatmap.pdf"
 
@@ -36,18 +42,6 @@ STRATEGY_COLORS <- c(
   "Max Return\n(Same Vol)"    = "#1F78B4",
   "Max Sharpe\nRatio"         = "#E31A1C",
   "Min Variance\n(Same Ret)"  = "#33A02C"
-)
-
-# Embedded data — from SLURM output
-RAW_DATA <- tribble(
-  ~bucket,    ~better_return, ~max_sharpe, ~safer_risk,
-  "0",                  0.57,       0.80,       1.32,
-  "(0,1]",             39.52,      17.07,      62.03,
-  "(1,20]",            14.98,      13.41,      11.24,
-  "(20,40]",           12.02,      12.11,       9.74,
-  "(40,60]",           10.61,      12.46,       8.60,
-  "(60,80]",           11.16,      24.66,       5.06,
-  "(80,100]",          11.15,      19.49,       2.00
 )
 
 # Readable bucket labels
@@ -73,6 +67,8 @@ format_pct_label <- function(x) {
 # CLI
 # -----------------------------------------------------------------------------
 option_list <- list(
+  make_option(c("-i", "--in-csv"), type = "character", default = DEFAULT_IN_CSV,
+              help = "Input distance_distribution_pct.csv [default: %default]"),
   make_option(c("--out-a"), type = "character", default = DEFAULT_OUT_A,
               help = "Output PDF for variant A (grouped bars) [default: %default]"),
   make_option(c("--out-b"), type = "character", default = DEFAULT_OUT_B,
@@ -80,10 +76,17 @@ option_list <- list(
   make_option(c("--width"),  type = "double", default = 10,
               help = "Plot width in inches [default: %default]"),
   make_option(c("--height"), type = "double", default = 3.8,
-              help = "Plot height in inches [default: %default]")
+              help = "Plot height in inches [default: %default]"),
+  make_option(c("--legend"), type = "character", default = "bottom",
+              help = "Variant A legend: bottom, or inside (top right) [default: %default]"),
+  make_option(c("--label-size"), type = "double", default = 2.8,
+              help = "Variant A bar label size in mm [default: %default]")
 )
 
 opt <- parse_args(OptionParser(option_list = option_list))
+if (!file.exists(opt$`in-csv`)) stop("Input file not found: ", opt$`in-csv`)
+if (!opt$legend %in% c("bottom", "inside")) stop("--legend must be bottom or inside")
+RAW_DATA <- read.csv(opt$`in-csv`, colClasses = c(bucket = "character"), check.names = FALSE)
 
 
 script_dir <- (function() {
@@ -145,6 +148,19 @@ fintech_theme <- theme_minimal(base_size = FONT_BASE) +
     plot.margin = margin(10, 15, 10, 10)
   )
 
+# Inside legend: top-right corner of the panel, which stays empty because
+# every bucket right of (0, 1] is below 30 %
+legend_theme <- if (opt$legend == "inside") {
+  theme(
+    legend.position        = "inside",
+    legend.position.inside = c(0.995, 0.98),
+    legend.justification   = c(1, 1),
+    legend.background      = element_rect(fill = "white", color = NA)
+  )
+} else {
+  NULL
+}
+
 # =============================================================================
 # VARIANT A — Grouped Bar Chart
 # =============================================================================
@@ -163,11 +179,15 @@ p_a <- ggplot(df_long, aes(x = bucket_label, y = pct, fill = strategy_label)) +
     aes(label = format_pct_label(pct)),
     position = position_dodge(width = 0.78),
     vjust    = -0.4,
-    size     = 2.8,
+    size     = opt$`label-size`,
     color    = "grey30"
   ) +
 
-  scale_fill_manual(values = STRATEGY_COLORS) +
+  # Inside legend keys on one line each
+  scale_fill_manual(
+    values = STRATEGY_COLORS,
+    labels = if (opt$legend == "inside") function(x) gsub("\n", " ", x) else waiver()
+  ) +
 
   scale_y_continuous(
     labels = function(x) paste0(round(x, 0), "%"),
@@ -179,7 +199,8 @@ p_a <- ggplot(df_long, aes(x = bucket_label, y = pct, fill = strategy_label)) +
     y = "Share of accounts (%)",
   ) +
 
-  fintech_theme
+  fintech_theme +
+  legend_theme
 
 # Save A
 out_a <- opt$`out-a`
